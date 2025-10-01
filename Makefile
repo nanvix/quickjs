@@ -368,7 +368,11 @@ clean:
 	rm -rf run-test262-debug$(EXE)
 	rm -f run_octane run_sunspider_like
 
-install: all
+ifdef CONFIG_LTO
+install: qjsc$(EXE) libquickjs.a libquickjs.lto.a
+else
+install: qjsc$(EXE) libquickjs.a
+endif
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin"
 	$(STRIP) qjs$(EXE) qjsc$(EXE)
 	install -m755 qjs$(EXE) qjsc$(EXE) "$(DESTDIR)$(PREFIX)/bin"
