@@ -22,6 +22,13 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
+
+// Workaround for broken inttypes.h header in Nanvix.
+// Remove this on Nanvix >= v0.11.x
+#if defined(__nanvix__)
+#include <sys/_stdint.h>
+#endif
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
