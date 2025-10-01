@@ -248,9 +248,12 @@ QJS_LIB_OBJS=$(OBJDIR)/quickjs.o $(OBJDIR)/dtoa.o $(OBJDIR)/libregexp.o $(OBJDIR
 QJS_OBJS=$(OBJDIR)/qjs.o $(OBJDIR)/repl.o $(QJS_LIB_OBJS)
 
 HOST_LIBS=-lm -ldl -lpthread
+ifndef CONFIG_NANVIX
 LIBS=-lm -lpthread
 ifndef CONFIG_WIN32
 LIBS+=-ldl
+endif
+else
 endif
 LIBS+=$(EXTRA_LIBS)
 
@@ -258,13 +261,13 @@ $(OBJDIR):
 	mkdir -p $(OBJDIR) $(OBJDIR)/examples $(OBJDIR)/tests
 
 qjs$(EXE): $(QJS_OBJS)
-	$(CC) $(LDFLAGS) $(LDEXPORT) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) $(LDEXPORT) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 qjs-debug$(EXE): $(patsubst %.o, %.debug.o, $(QJS_OBJS))
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 qjsc$(EXE): $(OBJDIR)/qjsc.o $(QJS_LIB_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 fuzz_eval: $(OBJDIR)/fuzz_eval.o $(OBJDIR)/fuzz_common.o libquickjs.fuzz.a
 	$(CC) $(CFLAGS_OPT) $^ -o fuzz_eval $(LIB_FUZZING_ENGINE)
@@ -322,10 +325,10 @@ libunicode-table.h: unicode_gen
 endif
 
 run-test262$(EXE): $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 run-test262-debug: $(patsubst %.o, %.debug.o, $(OBJDIR)/run-test262.o $(QJS_LIB_OBJS))
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 # object suffix order: nolto
 
@@ -354,7 +357,7 @@ $(OBJDIR)/%.check.o: %.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -DCONFIG_CHECK_JSVALUE -c -o $@ $<
 
 regexp_test: libregexp.c libunicode.c cutils.c
-	$(CC) $(LDFLAGS) $(CFLAGS) -DTEST -o $@ libregexp.c libunicode.c cutils.c $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) $(CFLAGS) -DTEST -o $@ libregexp.c libunicode.c cutils.c $(NANVIX_LIBS) $(LIBS)
 
 unicode_gen: $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o libunicode.c unicode_gen_def.h
 	$(HOST_CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJDIR)/unicode_gen.host.o $(OBJDIR)/cutils.host.o
@@ -397,7 +400,7 @@ hello.c: $(QJSC) $(HELLO_SRCS)
 	$(QJSC) -e $(HELLO_OPTS) -o $@ $(HELLO_SRCS)
 
 examples/hello: $(OBJDIR)/hello.o $(QJS_LIB_OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 # example of static JS compilation with modules
 HELLO_MODULE_SRCS=examples/hello_module.js
@@ -413,7 +416,7 @@ test_fib.c: $(QJSC) examples/test_fib.js
 	$(QJSC) -e -M examples/fib.so,fib -m -o $@ examples/test_fib.js
 
 examples/test_fib: $(OBJDIR)/test_fib.o $(OBJDIR)/examples/fib.o libquickjs$(LTOEXT).a
-	$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
+	$(CC) $(LDFLAGS) $(NANVIX_LDFLAGS) -o $@ $^ $(NANVIX_LIBS) $(LIBS)
 
 examples/fib.so: $(OBJDIR)/examples/fib.pic.o
 	$(CC) $(LDFLAGS) -shared -o $@ $^
