@@ -45861,7 +45861,11 @@ static int getTimezoneOffset(int64_t time)
     {
         struct tm tm;
         localtime_r(&ti, &tm);
+#if !defined(__nanvix__)
         res = -tm.tm_gmtoff / 60;
+#else
+        res = 0;
+#endif
     }
 #endif
     return res;
