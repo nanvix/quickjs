@@ -41,7 +41,7 @@
 #include <math.h>
 #if defined(__APPLE__)
 #include <malloc/malloc.h>
-#elif defined(__linux__) || defined(__GLIBC__)
+#elif defined(__linux__) || defined(__GLIBC__) || defined(__nanvix__)
 #include <malloc.h>
 #elif defined(__FreeBSD__)
 #include <malloc_np.h>
@@ -1698,7 +1698,7 @@ static size_t js_def_malloc_usable_size(const void *ptr)
     return _msize((void *)ptr);
 #elif defined(EMSCRIPTEN)
     return 0;
-#elif defined(__linux__) || defined(__GLIBC__)
+#elif defined(__linux__) || defined(__GLIBC__) || defined(__nanvix__)
     return malloc_usable_size((void *)ptr);
 #else
     /* change this to `return 0;` if compilation fails */
