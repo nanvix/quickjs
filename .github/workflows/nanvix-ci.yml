@@ -163,7 +163,7 @@ jobs:
           - \`bin/\` - Executables (qjs, qjsc)
           - \`lib/quickjs/\` - Static libraries (libquickjs.a)
           - \`include/quickjs/\` - Header files (quickjs.h, quickjs-libc.h)" \
-            --prerelease \
+            --latest \
             release-assets/*.tar.bz2
 
   report-minor-release-failure:
