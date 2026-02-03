@@ -20,7 +20,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -34,6 +34,11 @@ jobs:
           - platform: microvm
             process-mode: multi-process
     name: ${{ matrix.platform }}-${{ matrix.process-mode }}
+    container:
+      image: nanvix/toolchain:v0.11.x-minimal
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -56,11 +61,11 @@ jobs:
 
       - name: Build
         run: |
-          make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="$HOME/toolchain" all
+          make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" all
 
       - name: Test
         run: |
-          make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="$HOME/toolchain" test
+          make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" test
 
       - name: Package Artifacts
         run: |
@@ -86,10 +91,6 @@ jobs:
           name: quickjs-${{ matrix.platform }}-${{ matrix.process-mode }}
           path: ${{ env.ARTIFACT_TARBALL }}
           retention-days: 7
-
-      - name: Cleanup
-        if: always()
-        run: sudo find /tmp -maxdepth 1 -type d -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
 
   release:
     needs: build
