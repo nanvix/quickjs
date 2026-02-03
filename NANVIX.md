@@ -41,16 +41,18 @@ This document describes the port of [QuickJS](https://bellard.org/quickjs/) Java
 For experienced users who want to build quickly:
 
 ```bash
-# 1. Download Nanvix
+# 1. Pull the Docker image
+docker pull nanvix/toolchain:v0.11.x-minimal
+
+# 2. Download Nanvix sysroot
 gh release download latest --repo nanvix/nanvix --pattern '*microvm*single*.tar.bz2'
 mkdir -p nanvix && tar -xjf nanvix-microvm-*.tar.bz2 -C nanvix --strip-components=1
-export NANVIX_HOME="$(pwd)/nanvix"
 
-# 2. Build QuickJS (assumes toolchain is at $HOME/toolchain)
-make CONFIG_NANVIX=y NANVIX_TOOLCHAIN="$HOME/toolchain" all
+# 3. Build (Docker is used automatically if native toolchain is not found)
+make CONFIG_NANVIX=y NANVIX_HOME="$(pwd)/nanvix/sysroot-debug"
 
-# 3. Run tests
-make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" test
+# 4. Run tests
+make CONFIG_NANVIX=y NANVIX_HOME="$(pwd)/nanvix" test
 ```
 
 Continue reading for detailed instructions.
@@ -120,23 +122,32 @@ export NANVIX_HOME="$(pwd)/nanvix"
 
 ## Building
 
-### Method 1: Using the Makefile (Direct)
+### Using Docker (Recommended)
+
+The Makefile supports automatic Docker fallback when the native toolchain is not available:
+
+```bash
+# Pull the Nanvix toolchain Docker image
+docker pull nanvix/toolchain:v0.11.x-minimal
+
+# Build (Docker is used automatically if native toolchain is not found)
+make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix/sysroot-debug
+```
+
+> **Note:** The sysroot (`NANVIX_HOME`) must contain `lib/libposix.a` and `lib/user.ld` from a Nanvix build.
+
+**Docker Fallback Behavior:**
+- If `NANVIX_TOOLCHAIN` points to a valid toolchain, it uses the native compiler
+- If the native toolchain is not found, it automatically uses Docker if available
+- Use `CONFIG_NANVIX_DOCKER=y` to force Docker usage even when native toolchain exists
+- Use `NANVIX_DOCKER_IMAGE` to specify a custom Docker image (default: `nanvix/toolchain:v0.11.x-minimal`)
+
+### Using Native Toolchain
 
 ```bash
 export NANVIX_TOOLCHAIN=/path/to/toolchain  # Contains: bin/i686-nanvix-gcc
 export NANVIX_HOME=/path/to/nanvix          # Contains: lib/user.ld, lib/libposix.a
 make CONFIG_NANVIX=y all
-```
-
-### Method 2: Using the `z` Utility Script
-
-The `z` utility provides a convenient wrapper with sensible defaults:
-
-```bash
-./z configure --toolchain-path /path/to/toolchain --sysroot-path /path/to/sysroot
-./z build
-./z install  # Optional: install to sysroot
-./z clean    # Optional: clean build artifacts
 ```
 
 ### Build Outputs
@@ -226,7 +237,7 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 | File | Purpose |
 |------|---------|
 | `tests/test_std_nanvix.js` | Nanvix-compatible std library tests |
-| `z` | Build helper script |
+
 | `.github/workflows/nanvix-ci.yml` | CI workflow for automated builds |
 
 ---

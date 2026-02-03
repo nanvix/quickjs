@@ -43,6 +43,8 @@ endif
 #CONFIG_COSMO=y
 # Nanvix cross-compilation (set CONFIG_NANVIX=y to enable)
 #CONFIG_NANVIX=y
+# Nanvix Docker image for cross-compilation (used as fallback if native toolchain not found)
+NANVIX_DOCKER_IMAGE ?= nanvix/toolchain:v0.11.x-minimal
 
 # installation directory
 PREFIX?=/usr/local
@@ -88,18 +90,81 @@ endif
 ifdef CONFIG_NANVIX
   NANVIX_TOOLCHAIN ?= /opt/nanvix
   NANVIX_HOME ?= $(HOME)/nanvix
+
+  # Check if Docker is explicitly requested or native toolchain is not available
+  ifndef CONFIG_NANVIX_DOCKER
+    ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc),)
+      # Native toolchain not found, check for Docker
+      DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
+      ifdef DOCKER_AVAILABLE
+        DOCKER_IMAGE_EXISTS := $(shell docker image inspect $(NANVIX_DOCKER_IMAGE) >/dev/null 2>&1 && echo yes)
+        ifdef DOCKER_IMAGE_EXISTS
+          # Use Docker for cross-compilation
+          CONFIG_NANVIX_DOCKER := y
+          $(info [INFO] Native toolchain not found at $(NANVIX_TOOLCHAIN), using Docker image $(NANVIX_DOCKER_IMAGE))
+        else
+          $(error Docker image $(NANVIX_DOCKER_IMAGE) not found. Run: docker pull $(NANVIX_DOCKER_IMAGE))
+        endif
+      else
+        $(error Nanvix toolchain not found at $(NANVIX_TOOLCHAIN) and Docker is not available)
+      endif
+    endif
+  else
+    # Docker explicitly requested via CONFIG_NANVIX_DOCKER=y
+    DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
+    ifndef DOCKER_AVAILABLE
+      $(error CONFIG_NANVIX_DOCKER=y but Docker is not installed)
+    endif
+    DOCKER_IMAGE_EXISTS := $(shell docker image inspect $(NANVIX_DOCKER_IMAGE) >/dev/null 2>&1 && echo yes)
+    ifndef DOCKER_IMAGE_EXISTS
+      $(error Docker image $(NANVIX_DOCKER_IMAGE) not found. Run: docker pull $(NANVIX_DOCKER_IMAGE))
+    endif
+    $(info [INFO] Using Docker image $(NANVIX_DOCKER_IMAGE) (explicitly requested))
+  endif
+
   # Set CROSS_PREFIX to trigger host qjsc build for cross-compilation
   CROSS_PREFIX := nanvix-
-  # Use i686-nanvix-gcc for both compilation and linking
-  CC := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc
-  AR := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-ar
   CONFIG_M32=y
   EXE=.elf
-  # Nanvix-specific linker flags and libraries
-  NANVIX_LDFLAGS := -T$(NANVIX_HOME)/lib/user.ld -static
-  NANVIX_LIBS := $(NANVIX_HOME)/lib/libposix.a
-  NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libc.a
-  NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libm.a
+
+  ifdef CONFIG_NANVIX_DOCKER
+    # Docker-based cross-compilation
+    # Commands will be wrapped with docker run
+    DOCKER_TOOLCHAIN_PATH := /opt/nanvix
+    DOCKER_SYSROOT_PATH := /mnt/sysroot
+    DOCKER_WORKSPACE_PATH := /mnt/workspace
+    DOCKER_UID := $(shell id -u)
+    DOCKER_GID := $(shell id -g)
+    DOCKER_RUN := docker run --rm --user $(DOCKER_UID):$(DOCKER_GID) \
+      -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
+      -v $(NANVIX_HOME):$(DOCKER_SYSROOT_PATH):ro \
+      -w $(DOCKER_WORKSPACE_PATH) \
+      -e HOME=/tmp \
+      $(NANVIX_DOCKER_IMAGE)
+    # Override CC and AR to run inside Docker
+    CC := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-gcc
+    AR := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-ar
+    # Paths inside Docker container
+    NANVIX_LDFLAGS := -T$(DOCKER_SYSROOT_PATH)/lib/user.ld -static -Wl,-z,noexecstack
+    NANVIX_LIBS := -Wl,--start-group
+    NANVIX_LIBS += $(DOCKER_SYSROOT_PATH)/lib/libposix.a
+    NANVIX_LIBS += $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libc.a
+    NANVIX_LIBS += $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libm.a
+    NANVIX_LIBS += -Wl,--end-group
+  else
+    # Native toolchain cross-compilation
+    CC := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc
+    AR := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-ar
+    # Nanvix-specific linker flags and libraries
+    # Use -Wl,--start-group/-Wl,--end-group to resolve circular dependencies
+    # between libposix.a and libc.a (libposix provides malloc/free, libc uses them)
+    NANVIX_LDFLAGS := -T$(NANVIX_HOME)/lib/user.ld -static -Wl,-z,noexecstack
+    NANVIX_LIBS := -Wl,--start-group
+    NANVIX_LIBS += $(NANVIX_HOME)/lib/libposix.a
+    NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libc.a
+    NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libm.a
+    NANVIX_LIBS += -Wl,--end-group
+  endif
 endif
 
 ifdef CONFIG_WIN32
