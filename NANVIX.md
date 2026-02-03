@@ -45,14 +45,15 @@ For experienced users who want to build quickly:
 docker pull nanvix/toolchain:v0.11.x-minimal
 
 # 2. Download Nanvix sysroot
-gh release download latest --repo nanvix/nanvix --pattern '*microvm*single*.tar.bz2'
-mkdir -p nanvix && tar -xjf nanvix-microvm-*.tar.bz2 -C nanvix --strip-components=1
+curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- nanvix-artifacts
+tar -xjf nanvix-artifacts/*microvm*single*.tar.bz2 -C nanvix-artifacts
+export NANVIX_HOME=$(find nanvix-artifacts -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
 
 # 3. Build (Docker is used automatically if native toolchain is not found)
-make CONFIG_NANVIX=y NANVIX_HOME="$(pwd)/nanvix/sysroot-debug"
+make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME"
 
 # 4. Run tests
-make CONFIG_NANVIX=y NANVIX_HOME="$(pwd)/nanvix" test
+make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" test
 ```
 
 Continue reading for detailed instructions.
@@ -70,53 +71,20 @@ You need two components to build QuickJS for Nanvix:
 
 ### Available Platform Configurations
 
-Nanvix releases are available for multiple platform and process-mode combinations:
-
 | Platform | Process Mode | Artifact Pattern |
 |----------|--------------|------------------|
-| hyperlight | multi-process | `*hyperlight*multi*.tar.bz2` |
-| hyperlight | single-process | `*hyperlight*single*.tar.bz2` |
-| microvm | single-process | `*microvm*single*.tar.bz2` |
-| microvm | multi-process | `*microvm*multi*.tar.bz2` |
+| hyperlight | multi-process | `hyperlight.*multi-process` |
+| hyperlight | single-process | `hyperlight.*single-process` |
+| microvm | single-process | `microvm.*single-process` |
+| microvm | multi-process | `microvm.*multi-process` |
 
-Choose the configuration that matches your target environment. The examples below use `microvm-single-process` but you can substitute any pattern.
-
-### Downloading the Latest Nanvix Release
-
-Choose one of the methods below to download Nanvix.
-
-#### Option 1: Using GitHub CLI (Recommended)
-
-> **Prerequisite:** Install the [GitHub CLI](https://cli.github.com/) (`gh`)
+### Downloading Nanvix
 
 ```bash
-# Choose your platform pattern from the table above
-PLATFORM_PATTERN='*microvm*single*.tar.bz2'
-
-# Download and extract
-gh release download latest --repo nanvix/nanvix --pattern "$PLATFORM_PATTERN"
-mkdir -p nanvix && tar -xjf nanvix-*.tar.bz2 -C nanvix --strip-components=1
-export NANVIX_HOME="$(pwd)/nanvix"
+curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- nanvix-artifacts
 ```
 
-#### Option 2: Using curl and the GitHub API
-
-> **Prerequisite:** `curl`, `jq`, and a [GitHub token](https://github.com/settings/tokens).
-
-```bash
-export GH_TOKEN="your_github_token_here"
-PLATFORM_PATTERN="microvm.*single-process"  # See table above for options
-
-# Fetch download URL and download
-API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
-DOWNLOAD_URL=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL" | \
-    jq -r --arg p "$PLATFORM_PATTERN" '.assets[] | select(.name | test($p)) | .browser_download_url' | head -1)
-curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$DOWNLOAD_URL" -o nanvix-release.tar.bz2
-
-# Extract and set environment
-mkdir -p nanvix && tar -xjf nanvix-release.tar.bz2 -C nanvix --strip-components=1
-export NANVIX_HOME="$(pwd)/nanvix"
-```
+The script downloads all release artifacts. Extract the one matching your target platform (see [Quick Start](#quick-start) for a complete example).
 
 ---
 

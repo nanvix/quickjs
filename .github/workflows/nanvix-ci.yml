@@ -38,22 +38,19 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download and Extract Nanvix Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
-          ARTIFACT_PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*\\.tar\\.bz2$"
-          ARTIFACT_URL=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL" | \
-            jq -r --arg pattern "$ARTIFACT_PATTERN" '.assets[] | select(.name | test($pattern)) | .browser_download_url' | head -1)
-          if [[ -z "$ARTIFACT_URL" ]]; then
+          # Download all Nanvix release artifacts
+          curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- --force nanvix-artifacts
+          # Find and extract the artifact matching platform and process-mode
+          ARTIFACT_PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*\.tar\.bz2"
+          ARTIFACT_FILE=$(find nanvix-artifacts -maxdepth 1 -type f -name "*.tar.bz2" | grep -E "$ARTIFACT_PATTERN" | head -1)
+          if [[ -z "$ARTIFACT_FILE" ]]; then
             echo "::error::No ${{ matrix.platform }} ${{ matrix.process-mode }} artifact found"
             exit 1
           fi
-          mkdir -p nanvix-artifacts
-          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$ARTIFACT_URL" -o nanvix-artifacts/release.tar.bz2
           mkdir -p nanvix-artifacts/extracted
-          tar -xjf nanvix-artifacts/release.tar.bz2 -C nanvix-artifacts/extracted
+          tar -xjf "$ARTIFACT_FILE" -C nanvix-artifacts/extracted
           NANVIX_HOME=$(find nanvix-artifacts/extracted -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
           echo "NANVIX_HOME=$NANVIX_HOME" >> "$GITHUB_ENV"
 
