@@ -41,6 +41,8 @@ endif
 #CONFIG_M32=y
 # cosmopolitan build (see https://github.com/jart/cosmopolitan)
 #CONFIG_COSMO=y
+# Nanvix cross-compilation (set CONFIG_NANVIX=y to enable)
+#CONFIG_NANVIX=y
 
 # installation directory
 PREFIX?=/usr/local
@@ -82,6 +84,24 @@ CONFIG_DEFAULT_AR=y
 CONFIG_LTO=
 endif
 
+# Nanvix cross-compilation configuration
+ifdef CONFIG_NANVIX
+  NANVIX_TOOLCHAIN ?= /opt/nanvix
+  NANVIX_HOME ?= $(HOME)/nanvix
+  # Set CROSS_PREFIX to trigger host qjsc build for cross-compilation
+  CROSS_PREFIX := nanvix-
+  # Use i686-nanvix-gcc for both compilation and linking
+  CC := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc
+  AR := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-ar
+  CONFIG_M32=y
+  EXE=.elf
+  # Nanvix-specific linker flags and libraries
+  NANVIX_LDFLAGS := -T$(NANVIX_HOME)/lib/user.ld -static
+  NANVIX_LIBS := $(NANVIX_HOME)/lib/libposix.a
+  NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libc.a
+  NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libm.a
+endif
+
 ifdef CONFIG_WIN32
   ifdef CONFIG_M32
     CROSS_PREFIX?=i686-w64-mingw32-
@@ -93,14 +113,17 @@ else ifdef MSYSTEM
   CONFIG_WIN32=y
   CROSS_PREFIX?=
   EXE=.exe
-else
+else ifndef CONFIG_NANVIX
   CROSS_PREFIX?=
   EXE=
 endif
 
 ifdef CONFIG_CLANG
   HOST_CC=clang
-  CC=$(CROSS_PREFIX)clang
+
+  ifndef CONFIG_NANVIX
+    CC=$(CROSS_PREFIX)clang
+  endif
   CFLAGS+=-g -Wall -MMD -MF $(OBJDIR)/$(@F).d
   CFLAGS += -Wextra
   CFLAGS += -Wno-sign-compare
@@ -130,7 +153,9 @@ else ifdef CONFIG_COSMO
   AR=cosmoar
 else
   HOST_CC=gcc
-  CC=$(CROSS_PREFIX)gcc
+  ifndef CONFIG_NANVIX
+    CC=$(CROSS_PREFIX)gcc
+  endif
   CFLAGS+=-g -Wall -MMD -MF $(OBJDIR)/$(@F).d
   CFLAGS += -Wno-array-bounds -Wno-format-truncation -Wno-infinite-recursion
   ifdef CONFIG_LTO
@@ -143,10 +168,14 @@ STRIP?=$(CROSS_PREFIX)strip
 ifdef CONFIG_M32
 CFLAGS+=-msse2 -mfpmath=sse # use SSE math for correct FP rounding
 ifndef CONFIG_WIN32
+ifndef CONFIG_NANVIX
 CFLAGS+=-m32
 LDFLAGS+=-m32
 endif
 endif
+endif
+# Host compiler flags for building host tools during cross-compilation
+HOST_CFLAGS=-g -Wall -O2 -D_GNU_SOURCE -DCONFIG_VERSION=\"$(shell cat VERSION)\"
 CFLAGS+=-fwrapv # ensure that signed overflows behave as expected
 ifdef CONFIG_WERROR
 CFLAGS+=-Werror
@@ -339,7 +368,7 @@ $(OBJDIR)/fuzz_%.o: fuzz/fuzz_%.c | $(OBJDIR)
 	$(CC) $(CFLAGS_OPT) -c -I. -o $@ $<
 
 $(OBJDIR)/%.host.o: %.c | $(OBJDIR)
-	$(HOST_CC) $(CFLAGS_OPT) -c -o $@ $<
+	$(HOST_CC) $(HOST_CFLAGS) -c -o $@ $<
 
 $(OBJDIR)/%.pic.o: %.c | $(OBJDIR)
 	$(CC) $(CFLAGS_OPT) -fPIC -DJS_SHARED_LIBRARY -c -o $@ $<
@@ -453,6 +482,7 @@ ifdef CONFIG_SHARED_LIBS
 test: tests/bjson.so examples/point.so
 endif
 
+ifndef CONFIG_NANVIX
 test: qjs$(EXE)
 	$(WINE) ./qjs$(EXE) tests/test_closure.js
 	$(WINE) ./qjs$(EXE) tests/test_language.js
@@ -467,6 +497,14 @@ endif
 ifdef CONFIG_SHARED_LIBS
 	$(WINE) ./qjs$(EXE) tests/test_bjson.js
 	$(WINE) ./qjs$(EXE) examples/test_point.js
+endif
+else
+# Nanvix test target: run tests using nanvixd.elf (must run from NANVIX_HOME)
+test: qjs$(EXE)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_closure.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_language.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_loop.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_bigint.js)
 endif
 
 stats: qjs$(EXE)

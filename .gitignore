@@ -31,3 +31,5 @@ run_sunspider_like
 libwinpthread*.dll
 
 .z.cache
+nanvix-artifacts/
+qjs.elf
