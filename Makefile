@@ -158,10 +158,12 @@ else
   endif
   CFLAGS+=-g -Wall -MMD -MF $(OBJDIR)/$(@F).d
   CFLAGS += -Wno-array-bounds -Wno-format-truncation -Wno-infinite-recursion
-  ifdef CONFIG_LTO
-    AR=$(CROSS_PREFIX)gcc-ar
-  else
-    AR=$(CROSS_PREFIX)ar
+  ifndef CONFIG_NANVIX
+    ifdef CONFIG_LTO
+      AR=$(CROSS_PREFIX)gcc-ar
+    else
+      AR=$(CROSS_PREFIX)ar
+    endif
   endif
 endif
 STRIP?=$(CROSS_PREFIX)strip
