@@ -2,6 +2,8 @@ name: ci
 
 on:
   pull_request:
+    branches-ignore:
+      - nanvix/**
     paths:
       - '**'
       - '!.gitignore'
@@ -13,6 +15,8 @@ on:
   push:
     branches:
       - '*'
+    branches-ignore:
+      - nanvix/**
 
 jobs:
   linux:

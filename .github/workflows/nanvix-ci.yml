@@ -1,0 +1,51 @@
+name: Nanvix CI
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  push:
+    branches:
+      - nanvix/**
+  pull_request:
+    branches:
+      - nanvix/**
+  workflow_dispatch:
+  repository_dispatch:
+    types: [nanvix-release]
+
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and Extract Nanvix Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
+          ARTIFACT_URL=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL" | \
+            jq -r '.assets[] | select(.name | test("microvm.*single.*\\.tar\\.bz2$")) | .browser_download_url' | head -1)
+          if [[ -z "$ARTIFACT_URL" ]]; then
+            echo "::error::No microvm artifact found"
+            exit 1
+          fi
+          mkdir -p nanvix-artifacts
+          curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$ARTIFACT_URL" -o nanvix-artifacts/release.tar.bz2
+          mkdir -p nanvix-artifacts/extracted
+          tar -xjf nanvix-artifacts/release.tar.bz2 -C nanvix-artifacts/extracted
+          NANVIX_HOME=$(find nanvix-artifacts/extracted -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
+          echo "NANVIX_HOME=$NANVIX_HOME" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="$HOME/toolchain" all
+
+      - name: Test
+        run: |
+          make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="$HOME/toolchain" test
+
+      - name: Cleanup
+        if: always()
+        run: sudo find /tmp -maxdepth 1 -type d -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
