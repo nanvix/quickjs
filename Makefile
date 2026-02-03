@@ -232,7 +232,9 @@ endif
 ifndef CONFIG_COSMO
 ifndef CONFIG_DARWIN
 ifndef CONFIG_WIN32
+ifndef CONFIG_NANVIX # Shared libraries not yet supported in Nanvix.
 CONFIG_SHARED_LIBS=y # building shared libraries is supported
+endif
 endif
 endif
 endif
@@ -502,18 +504,32 @@ ifdef CONFIG_SHARED_LIBS
 endif
 else
 # Nanvix test target: run tests using nanvixd.elf (must run from NANVIX_HOME)
+# test_std_nanvix.js is a Nanvix-compatible version with unsupported tests commented out
 test: qjs$(EXE)
 	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_closure.js)
 	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_language.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/test_builtin.js)
 	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_loop.js)
 	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_bigint.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_cyclic_import.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/test_worker.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/test_std_nanvix.js)
+ifdef CONFIG_SHARED_LIBS
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_bjson.js)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath examples/test_point.js)
+endif
 endif
 
 stats: qjs$(EXE)
 	$(WINE) ./qjs$(EXE) -qd
 
+ifndef CONFIG_NANVIX
 microbench: qjs$(EXE)
 	$(WINE) ./qjs$(EXE) --std tests/microbench.js
+else
+microbench: qjs$(EXE)
+	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/microbench.js)
+endif
 
 ifeq ($(wildcard test262/features.txt),)
 test2-bootstrap:
