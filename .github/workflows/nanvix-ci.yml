@@ -32,7 +32,7 @@ jobs:
           - platform: microvm
             process-mode: multi-process
             runner: self-hosted-microvm-multi
-    name: build (${{ matrix.platform }}-${{ matrix.process-mode }})
+    name: ${{ matrix.platform }}-${{ matrix.process-mode }}
     steps:
       - uses: actions/checkout@v4
 
