@@ -33,3 +33,5 @@ libwinpthread*.dll
 .z.cache
 nanvix-artifacts/
 qjs.elf
+qjsc.elf
+run-test262.elf
