@@ -136,31 +136,20 @@ jobs:
           NANVIX_PUBLISHED: ${{ steps.nanvix-release.outputs.published }}
           NANVIX_SHA: ${{ steps.nanvix-release.outputs.sha }}
         run: |
-          RELEASE_TAG="build-$(date -u +"%Y%m%d-%H%M%S")-${GITHUB_SHA::7}"
+          RELEASE_TAG="${GITHUB_SHA::7}"
           gh release create "$RELEASE_TAG" \
             --title "Build ${RELEASE_TAG}" \
             --notes "Automated build from branch ${{ github.ref_name }} at commit ${{ github.sha }}.
 
           **Build Information:**
           - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          - Commit: ${{ github.sha }}
+          - Commit: [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
           - Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
 
           **Nanvix Release:**
           - Name: ${NANVIX_NAME}
           - Published: ${NANVIX_PUBLISHED}
-          - Commit: [${NANVIX_SHA::7}](https://github.com/nanvix/nanvix/commit/${NANVIX_SHA})
-
-          **Included Artifacts:**
-          - \`quickjs-hyperlight-multi-process.tar.bz2\` - QuickJS for Hyperlight (multi-process)
-          - \`quickjs-hyperlight-single-process.tar.bz2\` - QuickJS for Hyperlight (single-process)
-          - \`quickjs-microvm-multi-process.tar.bz2\` - QuickJS for MicroVM (multi-process)
-          - \`quickjs-microvm-single-process.tar.bz2\` - QuickJS for MicroVM (single-process)
-
-          Each tarball contains:
-          - \`bin/\` - Executables (qjs, qjsc)
-          - \`lib/quickjs/\` - Static libraries (libquickjs.a)
-          - \`include/quickjs/\` - Header files (quickjs.h, quickjs-libc.h)" \
+          - Commit: [${NANVIX_SHA}](https://github.com/nanvix/nanvix/commit/${NANVIX_SHA})" \
             --latest \
             release-assets/*.tar.bz2
 
