@@ -14,7 +14,7 @@ on:
     types: [nanvix-minor-release, nanvix-major-release]
 
 permissions:
-  contents: read
+  contents: write
   actions: write
   issues: write
 
@@ -69,9 +69,106 @@ jobs:
         run: |
           make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="$HOME/toolchain" test
 
+      - name: Package Artifacts
+        run: |
+          set -euo pipefail
+          ARTIFACT_NAME="quickjs-${{ matrix.platform }}-${{ matrix.process-mode }}"
+          DIST_DIR="dist/${ARTIFACT_NAME}"
+          mkdir -p "${DIST_DIR}/bin" "${DIST_DIR}/lib/quickjs" "${DIST_DIR}/include/quickjs"
+          # Copy executables
+          cp -f qjs "${DIST_DIR}/bin/" 2>/dev/null || true
+          cp -f qjsc "${DIST_DIR}/bin/" 2>/dev/null || true
+          # Copy libraries
+          cp -f libquickjs.a "${DIST_DIR}/lib/quickjs/" 2>/dev/null || true
+          cp -f libquickjs.lto.a "${DIST_DIR}/lib/quickjs/" 2>/dev/null || true
+          # Copy headers
+          cp -f quickjs.h quickjs-libc.h "${DIST_DIR}/include/quickjs/"
+          # Create tarball
+          tar -cjf "dist/${ARTIFACT_NAME}.tar.bz2" -C dist "${ARTIFACT_NAME}"
+          echo "ARTIFACT_TARBALL=dist/${ARTIFACT_NAME}.tar.bz2" >> "$GITHUB_ENV"
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: quickjs-${{ matrix.platform }}-${{ matrix.process-mode }}
+          path: ${{ env.ARTIFACT_TARBALL }}
+          retention-days: 7
+
       - name: Cleanup
         if: always()
         run: sudo find /tmp -maxdepth 1 -type d -name 'nvx:*' -exec rm -rf {} + 2>/dev/null || true
+
+  release:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: quickjs-*
+
+      - name: Prepare Release Assets
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find release-artifacts -name "*.tar.bz2" -exec cp {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Get Nanvix Release Info
+        id: nanvix-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
+          RELEASE_INFO=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL")
+          NANVIX_NAME=$(echo "$RELEASE_INFO" | jq -r '.name // "latest"')
+          NANVIX_PUBLISHED=$(echo "$RELEASE_INFO" | jq -r '.published_at')
+          NANVIX_SHA=$(echo "$RELEASE_INFO" | jq -r '.target_commitish')
+          NANVIX_ID=$(echo "$RELEASE_INFO" | jq -r '.id')
+          echo "name=${NANVIX_NAME}" >> "$GITHUB_OUTPUT"
+          echo "published=${NANVIX_PUBLISHED}" >> "$GITHUB_OUTPUT"
+          echo "sha=${NANVIX_SHA}" >> "$GITHUB_OUTPUT"
+          echo "id=${NANVIX_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Create Latest Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NANVIX_NAME: ${{ steps.nanvix-release.outputs.name }}
+          NANVIX_PUBLISHED: ${{ steps.nanvix-release.outputs.published }}
+          NANVIX_SHA: ${{ steps.nanvix-release.outputs.sha }}
+        run: |
+          RELEASE_TAG="build-$(date -u +"%Y%m%d-%H%M%S")-${GITHUB_SHA::7}"
+          gh release create "$RELEASE_TAG" \
+            --title "Build ${RELEASE_TAG}" \
+            --notes "Automated build from branch ${{ github.ref_name }} at commit ${{ github.sha }}.
+
+          **Build Information:**
+          - Workflow Run: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          - Commit: ${{ github.sha }}
+          - Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          **Nanvix Release:**
+          - Name: ${NANVIX_NAME}
+          - Published: ${NANVIX_PUBLISHED}
+          - Commit: [${NANVIX_SHA::7}](https://github.com/nanvix/nanvix/commit/${NANVIX_SHA})
+
+          **Included Artifacts:**
+          - \`quickjs-hyperlight-multi-process.tar.bz2\` - QuickJS for Hyperlight (multi-process)
+          - \`quickjs-hyperlight-single-process.tar.bz2\` - QuickJS for Hyperlight (single-process)
+          - \`quickjs-microvm-multi-process.tar.bz2\` - QuickJS for MicroVM (multi-process)
+          - \`quickjs-microvm-single-process.tar.bz2\` - QuickJS for MicroVM (single-process)
+
+          Each tarball contains:
+          - \`bin/\` - Executables (qjs, qjsc)
+          - \`lib/quickjs/\` - Static libraries (libquickjs.a)
+          - \`include/quickjs/\` - Header files (quickjs.h, quickjs-libc.h)" \
+            --prerelease \
+            release-assets/*.tar.bz2
 
   report-minor-release-failure:
     needs:
