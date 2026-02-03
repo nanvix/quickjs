@@ -20,23 +20,19 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ matrix.runner }}
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: hyperlight
             process-mode: multi-process
-            runner: self-hosted-hyperlight-multi
           - platform: hyperlight
             process-mode: single-process
-            runner: self-hosted-hyperlight-single
           - platform: microvm
             process-mode: single-process
-            runner: self-hosted-microvm-single
           - platform: microvm
             process-mode: multi-process
-            runner: self-hosted-microvm-multi
     name: ${{ matrix.platform }}-${{ matrix.process-mode }}
     steps:
       - uses: actions/checkout@v4
