@@ -63,8 +63,21 @@ You need two components to build QuickJS for Nanvix:
 
 | Component | Description | Default Location |
 |-----------|-------------|------------------|
-| **Nanvix Toolchain** | i686-nanvix cross-compiler | `/opt/nanvix` or `$HOME/toolchain` |
+| **Nanvix Toolchain** | i686-nanvix cross-compiler | `$HOME/toolchain` |
 | **Nanvix Sysroot** | System libraries and linker script | `$HOME/nanvix` |
+
+### Available Platform Configurations
+
+Nanvix releases are available for multiple platform and process-mode combinations:
+
+| Platform | Process Mode | Artifact Pattern |
+|----------|--------------|------------------|
+| hyperlight | multi-process | `*hyperlight*multi*.tar.bz2` |
+| hyperlight | single-process | `*hyperlight*single*.tar.bz2` |
+| microvm | single-process | `*microvm*single*.tar.bz2` |
+| microvm | multi-process | `*microvm*multi*.tar.bz2` |
+
+Choose the configuration that matches your target environment. The examples below use `microvm-single-process` but you can substitute any pattern.
 
 ### Downloading the Latest Nanvix Release
 
@@ -75,61 +88,32 @@ Choose one of the methods below to download Nanvix.
 > **Prerequisite:** Install the [GitHub CLI](https://cli.github.com/) (`gh`)
 
 ```bash
-# Step 1: Download the latest Nanvix microvm release
-# Pattern matches: nanvix-microvm-single-process-*.tar.bz2
-gh release download latest \
-    --repo nanvix/nanvix \
-    --pattern '*microvm*single*.tar.bz2'
+# Choose your platform pattern from the table above
+PLATFORM_PATTERN='*microvm*single*.tar.bz2'
 
-# Step 2: Create a directory and extract the release
-mkdir -p nanvix
-tar -xjf nanvix-microvm-*.tar.bz2 -C nanvix --strip-components=1
-
-# Step 3: Set the NANVIX_HOME environment variable
+# Download and extract
+gh release download latest --repo nanvix/nanvix --pattern "$PLATFORM_PATTERN"
+mkdir -p nanvix && tar -xjf nanvix-*.tar.bz2 -C nanvix --strip-components=1
 export NANVIX_HOME="$(pwd)/nanvix"
-
-# Step 4: Verify the installation
-echo "Nanvix installed at: $NANVIX_HOME"
-ls -la "$NANVIX_HOME/bin/nanvixd.elf"
 ```
 
 #### Option 2: Using curl and the GitHub API
 
-> **Prerequisite:** You need `curl` and `jq` installed, plus a GitHub token.
+> **Prerequisite:** `curl`, `jq`, and a [GitHub token](https://github.com/settings/tokens).
 
 ```bash
-# Step 1: Set your GitHub token for API authentication
-# Create a token at: https://github.com/settings/tokens
 export GH_TOKEN="your_github_token_here"
+PLATFORM_PATTERN="microvm.*single-process"  # See table above for options
 
-# Step 2: Query the GitHub API to find the download URL
-RELEASE_API="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
-DOWNLOAD_URL=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$RELEASE_API" | \
-    jq -r '.assets[] | select(.name | test("microvm.*single.*\\.tar\\.bz2$")) | .browser_download_url' | \
-    head -1)
+# Fetch download URL and download
+API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
+DOWNLOAD_URL=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL" | \
+    jq -r --arg p "$PLATFORM_PATTERN" '.assets[] | select(.name | test($p)) | .browser_download_url' | head -1)
+curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$DOWNLOAD_URL" -o nanvix-release.tar.bz2
 
-# Step 3: Verify we found a valid URL
-if [ -z "$DOWNLOAD_URL" ]; then
-    echo "Error: Could not find Nanvix microvm artifact"
-    exit 1
-fi
-echo "Downloading from: $DOWNLOAD_URL"
-
-# Step 4: Download the release archive
-curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
-    "$DOWNLOAD_URL" \
-    -o nanvix-release.tar.bz2
-
-# Step 5: Extract the archive
-mkdir -p nanvix
-tar -xjf nanvix-release.tar.bz2 -C nanvix --strip-components=1
-
-# Step 6: Set the NANVIX_HOME environment variable
+# Extract and set environment
+mkdir -p nanvix && tar -xjf nanvix-release.tar.bz2 -C nanvix --strip-components=1
 export NANVIX_HOME="$(pwd)/nanvix"
-
-# Step 7: Verify the installation
-echo "Nanvix installed at: $NANVIX_HOME"
-ls -la "$NANVIX_HOME/bin/nanvixd.elf"
 ```
 
 ---
@@ -139,15 +123,9 @@ ls -la "$NANVIX_HOME/bin/nanvixd.elf"
 ### Method 1: Using the Makefile (Direct)
 
 ```bash
-# Step 1: Set environment variables
 export NANVIX_TOOLCHAIN=/path/to/toolchain  # Contains: bin/i686-nanvix-gcc
 export NANVIX_HOME=/path/to/nanvix          # Contains: lib/user.ld, lib/libposix.a
-
-# Step 2: Build all targets
 make CONFIG_NANVIX=y all
-
-# Step 3: (Optional) Check the build outputs
-ls -la qjs.elf qjsc.elf libquickjs.a
 ```
 
 ### Method 2: Using the `z` Utility Script
@@ -155,19 +133,10 @@ ls -la qjs.elf qjsc.elf libquickjs.a
 The `z` utility provides a convenient wrapper with sensible defaults:
 
 ```bash
-# Step 1: Configure paths (optional - uses defaults if skipped)
-./z configure \
-    --toolchain-path /path/to/toolchain \
-    --sysroot-path /path/to/sysroot
-
-# Step 2: Build
+./z configure --toolchain-path /path/to/toolchain --sysroot-path /path/to/sysroot
 ./z build
-
-# Step 3: Install to sysroot (optional)
-./z install
-
-# Step 4: Clean build artifacts (when needed)
-./z clean
+./z install  # Optional: install to sysroot
+./z clean    # Optional: clean build artifacts
 ```
 
 ### Build Outputs
@@ -206,11 +175,7 @@ make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix microbench
 To run a single test file manually:
 
 ```bash
-# Step 1: Navigate to Nanvix home directory
-cd "$NANVIX_HOME"
-
-# Step 2: Run a test through the Nanvix daemon
-./bin/nanvixd.elf -- /path/to/qjs.elf /path/to/test.js
+cd "$NANVIX_HOME" && ./bin/nanvixd.elf -- /path/to/qjs.elf /path/to/test.js
 ```
 
 ### Available Test Files
@@ -289,5 +254,18 @@ The GitHub Actions workflow at `.github/workflows/nanvix-ci.yml` automates build
 | Daily schedule | Runs at midnight UTC |
 | Manual dispatch | Can be triggered manually |
 | Repository dispatch | Triggered by `nanvix-release` events |
+
+### Build Matrix
+
+The CI runs on 4 different platform/process-mode configurations, each on a dedicated self-hosted runner:
+
+| Platform | Process Mode | Runner |
+|----------|--------------|--------|
+| hyperlight | multi-process | `self-hosted-hyperlight-multi` |
+| hyperlight | single-process | `self-hosted-hyperlight-single` |
+| microvm | single-process | `self-hosted-microvm-single` |
+| microvm | multi-process | `self-hosted-microvm-multi` |
+
+All configurations run in parallel with `fail-fast: false`, ensuring that all platforms are tested even if one fails.
 
 ---

@@ -15,7 +15,24 @@ on:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: hyperlight
+            process-mode: multi-process
+            runner: self-hosted-hyperlight-multi
+          - platform: hyperlight
+            process-mode: single-process
+            runner: self-hosted-hyperlight-single
+          - platform: microvm
+            process-mode: single-process
+            runner: self-hosted-microvm-single
+          - platform: microvm
+            process-mode: multi-process
+            runner: self-hosted-microvm-multi
+    name: build (${{ matrix.platform }}-${{ matrix.process-mode }})
     steps:
       - uses: actions/checkout@v4
 
@@ -25,10 +42,11 @@ jobs:
         run: |
           set -euo pipefail
           API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
+          ARTIFACT_PATTERN="${{ matrix.platform }}.*${{ matrix.process-mode }}.*\\.tar\\.bz2$"
           ARTIFACT_URL=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL" | \
-            jq -r '.assets[] | select(.name | test("microvm.*single.*\\.tar\\.bz2$")) | .browser_download_url' | head -1)
+            jq -r --arg pattern "$ARTIFACT_PATTERN" '.assets[] | select(.name | test($pattern)) | .browser_download_url' | head -1)
           if [[ -z "$ARTIFACT_URL" ]]; then
-            echo "::error::No microvm artifact found"
+            echo "::error::No ${{ matrix.platform }} ${{ matrix.process-mode }} artifact found"
             exit 1
           fi
           mkdir -p nanvix-artifacts
