@@ -148,13 +148,13 @@ jobs:
         run: |
           set -euo pipefail
           echo "Using Nanvix SHA: $NANVIX_SHA (full: $NANVIX_SHA_FULL)"
-          
+
           # Query Nanvix release API for additional metadata
           API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
           RELEASE_INFO=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL")
           NANVIX_NAME=$(echo "$RELEASE_INFO" | jq -r '.name // "latest"')
           NANVIX_PUBLISHED=$(echo "$RELEASE_INFO" | jq -r '.published_at')
-          
+
           echo "name=${NANVIX_NAME}" >> "$GITHUB_OUTPUT"
           echo "published=${NANVIX_PUBLISHED}" >> "$GITHUB_OUTPUT"
           echo "sha=${NANVIX_SHA}" >> "$GITHUB_OUTPUT"
