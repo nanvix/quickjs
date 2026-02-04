@@ -91,6 +91,19 @@ jobs:
           tar -cjf "dist/${ARTIFACT_NAME}.tar.bz2" -C dist "${ARTIFACT_NAME}"
           echo "ARTIFACT_TARBALL=dist/${ARTIFACT_NAME}.tar.bz2" >> "$GITHUB_ENV"
 
+      - name: Save Nanvix SHA
+        run: |
+          mkdir -p nanvix-info
+          echo "$NANVIX_SHA" > nanvix-info/nanvix-sha.txt
+          echo "$NANVIX_SHA_FULL" > nanvix-info/nanvix-sha-full.txt
+
+      - name: Upload Nanvix SHA Info
+        uses: actions/upload-artifact@v4
+        with:
+          name: nanvix-info-${{ matrix.platform }}-${{ matrix.process-mode }}
+          path: nanvix-info/
+          retention-days: 7
+
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -104,6 +117,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Download Nanvix SHA Info
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nanvix-info-*
+          path: nanvix-info-artifacts
+          merge-multiple: false
 
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
@@ -124,18 +144,21 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # Get Nanvix SHA from build artifacts (consistent across all matrix builds)
+          NANVIX_SHA=$(cat nanvix-info-artifacts/nanvix-info-*/nanvix-sha.txt | head -1)
+          NANVIX_SHA_FULL=$(cat nanvix-info-artifacts/nanvix-info-*/nanvix-sha-full.txt | head -1)
+          echo "Using Nanvix SHA from build: $NANVIX_SHA (full: $NANVIX_SHA_FULL)"
+          
+          # Query Nanvix release API for additional metadata
           API_URL="https://api.github.com/repos/nanvix/nanvix/releases/tags/latest"
           RELEASE_INFO=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" "$API_URL")
           NANVIX_NAME=$(echo "$RELEASE_INFO" | jq -r '.name // "latest"')
           NANVIX_PUBLISHED=$(echo "$RELEASE_INFO" | jq -r '.published_at')
-          NANVIX_SHA_FULL=$(echo "$RELEASE_INFO" | jq -r '.target_commitish')
-          NANVIX_SHA="${NANVIX_SHA_FULL::7}"
-          NANVIX_ID=$(echo "$RELEASE_INFO" | jq -r '.id')
+          
           echo "name=${NANVIX_NAME}" >> "$GITHUB_OUTPUT"
           echo "published=${NANVIX_PUBLISHED}" >> "$GITHUB_OUTPUT"
           echo "sha=${NANVIX_SHA}" >> "$GITHUB_OUTPUT"
           echo "sha_full=${NANVIX_SHA_FULL}" >> "$GITHUB_OUTPUT"
-          echo "id=${NANVIX_ID}" >> "$GITHUB_OUTPUT"
 
       - name: Create Latest Release
         env:
