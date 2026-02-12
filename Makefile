@@ -44,7 +44,7 @@ endif
 # Nanvix cross-compilation (set CONFIG_NANVIX=y to enable)
 #CONFIG_NANVIX=y
 # Nanvix Docker image for cross-compilation (used as fallback if native toolchain not found)
-NANVIX_DOCKER_IMAGE ?= nanvix/toolchain:v0.11.x-minimal
+NANVIX_DOCKER_IMAGE ?= nanvix/toolchain:latest-minimal
 
 # installation directory
 PREFIX?=/usr/local
