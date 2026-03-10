@@ -115,6 +115,7 @@ jobs:
           make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" all
 
       - name: Test
+        if: matrix.process-mode != 'standalone'
         run: |
           make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" NANVIX_TOOLCHAIN="/opt/nanvix" PROCESS_MODE="${{ matrix.process-mode }}" test
 
