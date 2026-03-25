@@ -117,9 +117,9 @@ jobs:
           ARTIFACT_NAME="quickjs-${{ matrix.platform }}-${{ matrix.process-mode }}-${{ matrix.memory }}"
           DIST_DIR="dist/${ARTIFACT_NAME}"
           mkdir -p "${DIST_DIR}/bin" "${DIST_DIR}/lib/quickjs" "${DIST_DIR}/include/quickjs"
-          # Copy executables
-          cp -f qjs "${DIST_DIR}/bin/" 2>/dev/null || true
-          cp -f qjsc "${DIST_DIR}/bin/" 2>/dev/null || true
+          # Copy executables (CONFIG_NANVIX=y sets EXE=.elf)
+          cp -f qjs.elf "${DIST_DIR}/bin/" 2>/dev/null || true
+          cp -f qjsc.elf "${DIST_DIR}/bin/" 2>/dev/null || true
           # Copy libraries
           cp -f libquickjs.a "${DIST_DIR}/lib/quickjs/" 2>/dev/null || true
           cp -f libquickjs.lto.a "${DIST_DIR}/lib/quickjs/" 2>/dev/null || true
