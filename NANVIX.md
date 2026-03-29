@@ -295,7 +295,6 @@ invokes the reusable Nanvix CI workflow at
 | PR to `nanvix/**` | Pull requests targeting Nanvix branches |
 | Daily schedule | Runs at midnight UTC |
 | Manual dispatch | Can be triggered manually |
-| Repository dispatch | Triggered by dependency release events |
 
 ### Build Matrix
 
