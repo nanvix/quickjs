@@ -1,0 +1,323 @@
+# Makefile.nanvix - QuickJS cross-compilation for Nanvix
+#
+# Copyright(c) The Maintainers of Nanvix.
+# Licensed under the MIT License.
+#
+# Usage:
+#   make -f Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix all
+#
+# This Makefile wraps the upstream QuickJS Makefile with Nanvix cross-compilation
+# settings and adds standardized test/package/release targets for nanvix-zutil.
+
+# Nanvix Docker image for cross-compilation (used as fallback if native toolchain not found)
+NANVIX_DOCKER_IMAGE ?= nanvix/toolchain:latest-minimal
+
+# Platform and deployment configuration (passed by nanvix-zutil / z.py)
+PLATFORM ?= hyperlight
+PROCESS_MODE ?= multi-process
+MEMORY_SIZE ?= 128mb
+
+# ===========================================================================
+# Toolchain Detection
+# ===========================================================================
+
+ifdef CONFIG_NANVIX
+  NANVIX_TOOLCHAIN ?= /opt/nanvix
+  NANVIX_HOME ?= $(HOME)/nanvix
+
+  ifndef CONFIG_NANVIX_DOCKER
+    ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc),)
+      DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
+      ifdef DOCKER_AVAILABLE
+        DOCKER_IMAGE_EXISTS := $(shell docker image inspect $(NANVIX_DOCKER_IMAGE) >/dev/null 2>&1 && echo yes)
+        ifdef DOCKER_IMAGE_EXISTS
+          CONFIG_NANVIX_DOCKER := y
+          $(info [nanvix] Using Docker (native toolchain not found at $(NANVIX_TOOLCHAIN)))
+        else
+          $(error Docker image $(NANVIX_DOCKER_IMAGE) not found. Run: docker pull $(NANVIX_DOCKER_IMAGE))
+        endif
+      else
+        $(error Nanvix toolchain not found at $(NANVIX_TOOLCHAIN) and Docker not available)
+      endif
+    endif
+  else
+    DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
+    ifndef DOCKER_AVAILABLE
+      $(error CONFIG_NANVIX_DOCKER=y but Docker is not installed)
+    endif
+    DOCKER_IMAGE_EXISTS := $(shell docker image inspect $(NANVIX_DOCKER_IMAGE) >/dev/null 2>&1 && echo yes)
+    ifndef DOCKER_IMAGE_EXISTS
+      $(error Docker image $(NANVIX_DOCKER_IMAGE) not found. Run: docker pull $(NANVIX_DOCKER_IMAGE))
+    endif
+    $(info [nanvix] Using Docker (explicitly requested))
+  endif
+
+  EXE = .elf
+  SYSROOT_PATH := $(abspath $(NANVIX_HOME))
+
+  ifdef CONFIG_NANVIX_DOCKER
+    DOCKER_TOOLCHAIN_PATH := /opt/nanvix
+    DOCKER_SYSROOT_PATH := /mnt/sysroot
+    DOCKER_WORKSPACE_PATH := /mnt/workspace
+    DOCKER_UID := $(shell id -u)
+    DOCKER_GID := $(shell id -g)
+    DOCKER_RUN := docker run --rm --user $(DOCKER_UID):$(DOCKER_GID) \
+      -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
+      -v $(SYSROOT_PATH):$(DOCKER_SYSROOT_PATH):ro \
+      -w $(DOCKER_WORKSPACE_PATH) \
+      -e HOME=/tmp \
+      $(NANVIX_DOCKER_IMAGE)
+    DOCKER_KVM_GID := $(shell stat -c '%g' /dev/kvm 2>/dev/null || echo 0)
+    DOCKER_RUN_FUNCTIONAL := docker run --rm --device /dev/kvm \
+      --user $(DOCKER_UID):$(DOCKER_GID) --group-add $(DOCKER_KVM_GID) \
+      -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
+      -v $(SYSROOT_PATH):$(DOCKER_SYSROOT_PATH):ro \
+      -w $(DOCKER_SYSROOT_PATH) \
+      -e HOME=/tmp \
+      -e USER=$(shell whoami) \
+      $(NANVIX_DOCKER_IMAGE)
+  endif
+else
+  ifneq ($(MAKECMDGOALS),clean)
+    $(error CONFIG_NANVIX must be set to 'y'. Usage: make -f Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/path/to/sysroot)
+  endif
+  EXE = .elf
+endif
+
+# Common arguments forwarded to the upstream Makefile
+UPSTREAM_MAKE_ARGS = CONFIG_NANVIX=y \
+  NANVIX_HOME="$(NANVIX_HOME)" \
+  NANVIX_TOOLCHAIN="$(NANVIX_TOOLCHAIN)"
+
+ifdef CONFIG_NANVIX_DOCKER
+UPSTREAM_MAKE_ARGS += CONFIG_NANVIX_DOCKER=y \
+  NANVIX_DOCKER_IMAGE="$(NANVIX_DOCKER_IMAGE)"
+endif
+
+# ===========================================================================
+# Build Targets
+# ===========================================================================
+
+all:
+	$(MAKE) $(UPSTREAM_MAKE_ARGS) all
+
+# ===========================================================================
+# Test Targets
+# ===========================================================================
+
+test-smoke: all
+	@echo "=== QuickJS smoke tests ==="
+	@test -f qjs$(EXE) || { echo "  FAIL: qjs$(EXE) not found"; exit 1; }
+	@test -f qjsc$(EXE) || { echo "  FAIL: qjsc$(EXE) not found"; exit 1; }
+	@test -f libquickjs.a || { echo "  FAIL: libquickjs.a not found"; exit 1; }
+	@qjs_size=$$(wc -c < qjs$(EXE)); \
+	  if [ "$$qjs_size" -lt 1000 ]; then echo "  FAIL: qjs$(EXE) too small"; exit 1; fi
+	@lib_size=$$(wc -c < libquickjs.a); \
+	  if [ "$$lib_size" -lt 1000 ]; then echo "  FAIL: libquickjs.a too small"; exit 1; fi
+	@test -f quickjs.h || { echo "  FAIL: quickjs.h not found"; exit 1; }
+	@test -f quickjs-libc.h || { echo "  FAIL: quickjs-libc.h not found"; exit 1; }
+	@echo "  OK: qjs$(EXE) ($$(wc -c < qjs$(EXE)) bytes)"
+	@echo "  OK: qjsc$(EXE) ($$(wc -c < qjsc$(EXE)) bytes)"
+	@echo "  OK: libquickjs.a ($$(wc -c < libquickjs.a) bytes)"
+	@echo "  PASS: QuickJS smoke tests"
+
+test-integration: test-smoke
+	@echo "=== QuickJS integration tests ==="
+	@test -f run-test262$(EXE) || { echo "  FAIL: run-test262$(EXE) not found"; exit 1; }
+	@echo "  OK: run-test262$(EXE) ($$(wc -c < run-test262$(EXE)) bytes)"
+	@echo "  PASS: QuickJS integration tests"
+
+test-functional: test-integration
+	@echo "=== QuickJS functional tests ==="
+ifeq ($(PROCESS_MODE),standalone)
+ifdef CONFIG_NANVIX_DOCKER
+	@echo "  Running tests via nanvixd.elf standalone (Docker)..."
+	$(DOCKER_RUN_FUNCTIONAL) sh -c '\
+	  mkdir -p /tmp/nanvix-ramfs/tests && \
+	  cp $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) /tmp/nanvix-ramfs/ && \
+	  cp $(DOCKER_WORKSPACE_PATH)/tests/test_closure.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_language.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_builtin.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_loop.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_bigint.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_cyclic_import.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_worker.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_std_nanvix.js \
+	     /tmp/nanvix-ramfs/tests/ && \
+	  ./bin/mkramfs.elf -o /tmp/rootfs.img /tmp/nanvix-ramfs/ && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) ./tests/test_closure.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) ./tests/test_language.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) --std ./tests/test_builtin.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) ./tests/test_loop.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) ./tests/test_bigint.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) ./tests/test_cyclic_import.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) --std ./tests/test_worker.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- ./qjs$(EXE) --std ./tests/test_std_nanvix.js && \
+	  rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img'
+else
+	@echo "  Running tests via nanvixd.elf standalone..."
+	@rm -rf /tmp/nanvix-ramfs && mkdir -p /tmp/nanvix-ramfs/tests
+	@cp $(abspath qjs$(EXE)) /tmp/nanvix-ramfs/
+	@cp $(abspath tests/test_closure.js) $(abspath tests/test_language.js) \
+	    $(abspath tests/test_builtin.js) $(abspath tests/test_loop.js) \
+	    $(abspath tests/test_bigint.js) $(abspath tests/test_cyclic_import.js) \
+	    $(abspath tests/test_worker.js) $(abspath tests/test_std_nanvix.js) \
+	    /tmp/nanvix-ramfs/tests/
+	"$(SYSROOT_PATH)/bin/mkramfs.elf" -o /tmp/rootfs.img /tmp/nanvix-ramfs/
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) ./tests/test_closure.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) ./tests/test_language.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) --std ./tests/test_builtin.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) ./tests/test_loop.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) ./tests/test_bigint.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) ./tests/test_cyclic_import.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) --std ./tests/test_worker.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- ./qjs$(EXE) --std ./tests/test_std_nanvix.js
+	@rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img
+endif
+else
+ifdef CONFIG_NANVIX_DOCKER
+	@echo "  Running tests via nanvixd.elf (Docker)..."
+	$(DOCKER_RUN_FUNCTIONAL) sh -c '\
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_closure.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_language.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) --std $(DOCKER_WORKSPACE_PATH)/tests/test_builtin.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_loop.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_bigint.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_cyclic_import.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) --std $(DOCKER_WORKSPACE_PATH)/tests/test_worker.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf -- \
+	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) --std $(DOCKER_WORKSPACE_PATH)/tests/test_std_nanvix.js'
+else
+	@echo "  Running tests via nanvixd.elf..."
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) $(abspath tests/test_closure.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) $(abspath tests/test_language.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) --std $(abspath tests/test_builtin.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) $(abspath tests/test_loop.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) $(abspath tests/test_bigint.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) $(abspath tests/test_cyclic_import.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) --std $(abspath tests/test_worker.js)
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
+	  $(abspath qjs$(EXE)) --std $(abspath tests/test_std_nanvix.js)
+endif
+endif
+	@echo "  PASS: QuickJS functional tests"
+
+test: test-smoke test-integration test-functional
+	@echo "=== All QuickJS tests PASSED ==="
+
+# ===========================================================================
+# Package Target
+# ===========================================================================
+
+package: all
+	@echo "=== Packaging QuickJS release ==="
+	$(eval ARTIFACT_NAME := quickjs-$(PLATFORM)-$(PROCESS_MODE)-$(MEMORY_SIZE))
+	rm -rf dist/$(ARTIFACT_NAME)
+	mkdir -p dist/$(ARTIFACT_NAME)/sysroot/bin \
+	         dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs \
+	         dist/$(ARTIFACT_NAME)/sysroot/include/quickjs
+	cp -f qjs$(EXE) dist/$(ARTIFACT_NAME)/sysroot/bin/
+	cp -f qjsc$(EXE) dist/$(ARTIFACT_NAME)/sysroot/bin/
+	cp -f libquickjs.a dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs/
+	-cp -f libquickjs.lto.a dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs/ 2>/dev/null || true
+	cp -f quickjs.h quickjs-libc.h dist/$(ARTIFACT_NAME)/sysroot/include/quickjs/
+	tar -cjf dist/$(ARTIFACT_NAME).tar.bz2 -C dist/$(ARTIFACT_NAME) sysroot
+	@echo "  Package: dist/$(ARTIFACT_NAME).tar.bz2"
+	@echo "  Contents:"
+	@tar tjf dist/$(ARTIFACT_NAME).tar.bz2 | head -20
+
+# ===========================================================================
+# Verify Package
+# ===========================================================================
+
+verify-package:
+	@echo "=== Verifying QuickJS package ==="
+	$(eval ARTIFACT_NAME := quickjs-$(PLATFORM)-$(PROCESS_MODE)-$(MEMORY_SIZE))
+	@TARBALL="dist/$(ARTIFACT_NAME).tar.bz2"; \
+	if [ ! -f "$$TARBALL" ]; then \
+	  echo "FAIL: Package tarball not found: $$TARBALL"; exit 1; \
+	fi; \
+	echo "Package contents:"; \
+	tar tjf "$$TARBALL"; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/bin/'; then \
+	  echo "FAIL: Package missing sysroot/bin/ entries"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/'; then \
+	  echo "FAIL: Package missing sysroot/lib/quickjs/ entries"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/include/quickjs/'; then \
+	  echo "FAIL: Package missing sysroot/include/quickjs/ entries"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/libquickjs.a'; then \
+	  echo "FAIL: Package missing sysroot/lib/quickjs/libquickjs.a"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs.h'; then \
+	  echo "FAIL: Package missing sysroot/include/quickjs/quickjs.h"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs-libc.h'; then \
+	  echo "FAIL: Package missing sysroot/include/quickjs/quickjs-libc.h"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q "sysroot/bin/qjs$(EXE)"; then \
+	  echo "FAIL: Package missing sysroot/bin/qjs$(EXE) executable"; exit 1; \
+	fi; \
+	if ! tar tjf "$$TARBALL" | grep -q "sysroot/bin/qjsc$(EXE)"; then \
+	  echo "FAIL: Package missing sysroot/bin/qjsc$(EXE) executable"; exit 1; \
+	fi; \
+	echo "  PASS: QuickJS package verification"
+
+# ===========================================================================
+# Clean
+# ===========================================================================
+
+clean:
+	-$(MAKE) CONFIG_NANVIX=y clean 2>/dev/null || true
+	rm -f qjs.elf qjsc.elf run-test262.elf
+	rm -rf dist/
+
+.PHONY: all clean test test-smoke test-integration test-functional package verify-package

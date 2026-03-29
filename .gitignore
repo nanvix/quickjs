@@ -30,7 +30,14 @@ run_octane
 run_sunspider_like
 libwinpthread*.dll
 
-.z.cache
+# Nanvix zutils runtime artifacts
+.nanvix/env.json
+.nanvix/cache/
+.nanvix/buildroot/
+.nanvix/nanvix.lock
+.nanvix/release/
+.nanvix/_test_staging/
+dist/
 nanvix-artifacts/
 qjs.elf
 qjsc.elf

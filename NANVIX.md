@@ -14,13 +14,14 @@ This document describes the port of [QuickJS](https://bellard.org/quickjs/) Java
 | **Base Commit** | `4af5b1e` (master) |
 | **Target Platform** | Nanvix (i686) |
 | **Build System** | GNU Make |
+| **Build Orchestration** | [nanvix-zutil](https://github.com/nanvix/zutils) |
 
 **What's included:**
 - ✅ Cross-compilation support for Nanvix
 - ✅ Platform-specific workarounds
 - ✅ Nanvix-compatible test suite
-- ✅ Build helper scripts
-- ✅ CI/CD integration
+- ✅ nanvix-zutil integration (`z.sh` / `z.ps1` / `.nanvix/z.py`)
+- ✅ CI/CD integration via reusable workflow
 
 ---
 
@@ -38,7 +39,26 @@ This document describes the port of [QuickJS](https://bellard.org/quickjs/) Java
 
 ## Quick Start
 
-For experienced users who want to build quickly:
+For experienced users who want to build quickly using nanvix-zutil:
+
+```bash
+# 1. Install nanvix-zutil
+pip install nanvix-zutil
+
+# 2. Setup (downloads Nanvix sysroot automatically)
+./z setup
+
+# 3. Build
+./z build
+
+# 4. Test
+./z test
+
+# 5. Package release tarballs
+./z release
+```
+
+### Manual Build (without nanvix-zutil)
 
 ```bash
 # 1. Pull the Docker image
@@ -62,12 +82,16 @@ Continue reading for detailed instructions.
 
 ## Prerequisites
 
-You need two components to build QuickJS for Nanvix:
+You need the following components to build QuickJS for Nanvix:
 
 | Component | Description | Default Location |
 |-----------|-------------|------------------|
+| **nanvix-zutil** | Build orchestration tool | `pip install nanvix-zutil` |
 | **Nanvix Toolchain** | i686-nanvix cross-compiler | `$HOME/toolchain` |
 | **Nanvix Sysroot** | System libraries and linker script | `$HOME/nanvix` |
+
+> **Note:** When using nanvix-zutil (`./z setup`), the sysroot is downloaded
+> automatically. The Nanvix version is declared in `.nanvix/nanvix.toml`.
 
 ### Available Platform Configurations
 
@@ -77,6 +101,7 @@ You need two components to build QuickJS for Nanvix:
 | hyperlight | single-process | `hyperlight.*single-process` |
 | microvm | single-process | `microvm.*single-process` |
 | microvm | multi-process | `microvm.*multi-process` |
+| microvm | standalone | `microvm.*standalone` |
 
 ### Downloading Nanvix
 
@@ -90,7 +115,21 @@ The script downloads all release artifacts. Extract the one matching your target
 
 ## Building
 
-### Using Docker (Recommended)
+### Using nanvix-zutil (Recommended)
+
+```bash
+# Install nanvix-zutil
+pip install nanvix-zutil
+
+# Setup, build, and test in one go
+./z setup && ./z build && ./z test
+```
+
+The `./z` entry point automatically delegates to `z.sh` on Linux/macOS or `z.ps1` on
+Windows, which in turn invokes the `nanvix-zutil` CLI. Build logic is defined in
+`.nanvix/z.py`.
+
+### Using Docker
 
 The Makefile supports automatic Docker fallback when the native toolchain is not available:
 
@@ -138,14 +177,20 @@ After a successful build, you will have:
 ### Running the Full Test Suite
 
 ```bash
-# Run all tests
+# Using nanvix-zutil
+./z test
+
+# Or directly via Make
+make -f Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
+
+# Or via the original Makefile
 make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
 ```
 
 ### Running Microbenchmarks
 
 ```bash
-# Run performance benchmarks
+# Via the original Makefile
 make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix microbench
 ```
 
@@ -181,10 +226,15 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 | Change | Description |
 |--------|-------------|
 | Cross-compilation | Added `CONFIG_NANVIX=y` option to enable Nanvix build |
+| New Makefile | Added `Makefile.nanvix` for standardized Nanvix cross-compilation |
+| nanvix-zutil integration | `.nanvix/z.py` ZScript subclass for build orchestration |
+| Package manifest | `.nanvix/nanvix.toml` declares version and Nanvix dependency |
+| Thin wrappers | `z.sh`, `z.ps1`, `z` entry points delegate to nanvix-zutil |
 | AR tool | Fixed Makefile to conditionally set AR for Nanvix builds |
 | Linker flags | Added Nanvix-specific flags (`-T user.ld -static`) |
 | Shared libraries | Disabled (not supported on Nanvix) |
 | Test target | Modified to run via `nanvixd.elf` |
+| Package targets | `package` and `verify-package` for release tarball creation |
 
 ### Source Code Changes
 
@@ -206,7 +256,18 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 |------|---------|
 | `tests/test_std_nanvix.js` | Nanvix-compatible std library tests |
 
-| `.github/workflows/nanvix-ci.yml` | CI workflow for automated builds |
+### Nanvix-Specific Files
+
+| File | Purpose |
+|------|---------|
+| `Makefile.nanvix` | Standalone Makefile for Nanvix cross-compilation |
+| `NANVIX.md` | This documentation file |
+| `.nanvix/z.py` | ZScript subclass (build orchestration logic) |
+| `.nanvix/nanvix.toml` | Package manifest with Nanvix version declaration |
+| `z` | Cross-platform entry point (routes to z.sh or z.ps1) |
+| `z.sh` | Thin bash wrapper for nanvix-zutil |
+| `z.ps1` | Thin PowerShell wrapper for nanvix-zutil |
+| `.github/workflows/nanvix-ci.yml` | CI workflow (thin caller to reusable workflow) |
 
 ---
 
@@ -222,7 +283,9 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 
 ## CI/CD
 
-The GitHub Actions workflow at `.github/workflows/nanvix-ci.yml` automates building and testing on every change.
+The GitHub Actions workflow at `.github/workflows/nanvix-ci.yml` is a thin caller that
+invokes the reusable Nanvix CI workflow at
+`nanvix/workflows/.github/workflows/nanvix-ci.yml@v1.0.0`.
 
 ### Trigger Events
 
@@ -232,19 +295,21 @@ The GitHub Actions workflow at `.github/workflows/nanvix-ci.yml` automates build
 | PR to `nanvix/**` | Pull requests targeting Nanvix branches |
 | Daily schedule | Runs at midnight UTC |
 | Manual dispatch | Can be triggered manually |
-| Repository dispatch | Triggered by `nanvix-release` events |
+| Repository dispatch | Triggered by dependency release events |
 
 ### Build Matrix
 
-The CI runs on 4 different platform/process-mode configurations, each on a dedicated self-hosted runner:
+The CI runs across platform/process-mode/memory configurations:
 
 | Platform | Process Mode | Runner |
 |----------|--------------|--------|
-| hyperlight | multi-process | `self-hosted-hyperlight-multi` |
-| hyperlight | single-process | `self-hosted-hyperlight-single` |
-| microvm | single-process | `self-hosted-microvm-single` |
-| microvm | multi-process | `self-hosted-microvm-multi` |
+| hyperlight | multi-process | `ubuntu-latest` (container) |
+| hyperlight | single-process | `ubuntu-latest` (container) |
+| hyperlight | standalone | `ubuntu-latest` (container) |
+| microvm | multi-process | `ubuntu-latest` (container) |
+| microvm | single-process | `ubuntu-latest` (container) |
+| microvm | standalone | `ubuntu-latest` (container) |
 
-All configurations run in parallel with `fail-fast: false`, ensuring that all platforms are tested even if one fails.
+All configurations run in parallel with `fail-fast: false`.
 
 ---
