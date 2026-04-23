@@ -105,7 +105,7 @@ all:
 # Test Targets
 # ===========================================================================
 
-test-smoke: all
+test-smoke:
 	@echo "=== QuickJS smoke tests ==="
 	@test -f qjs$(EXE) || { echo "  FAIL: qjs$(EXE) not found"; exit 1; }
 	@test -f qjsc$(EXE) || { echo "  FAIL: qjsc$(EXE) not found"; exit 1; }
