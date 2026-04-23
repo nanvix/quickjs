@@ -147,28 +147,28 @@ ifdef CONFIG_NANVIX_DOCKER
 	  ./bin/mkramfs.elf -o /tmp/rootfs.img /tmp/nanvix-ramfs/ && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) ./tests/test_closure.js && \
+	    -- $(abspath qjs$(EXE)) ./tests/test_closure.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) ./tests/test_language.js && \
+	    -- $(abspath qjs$(EXE)) ./tests/test_language.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) --std ./tests/test_builtin.js && \
+	    -- $(abspath qjs$(EXE)) --std ./tests/test_builtin.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) ./tests/test_loop.js && \
+	    -- $(abspath qjs$(EXE)) ./tests/test_loop.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) ./tests/test_bigint.js && \
+	    -- $(abspath qjs$(EXE)) ./tests/test_bigint.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) ./tests/test_cyclic_import.js && \
+	    -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) --std ./tests/test_worker.js && \
+	    -- $(abspath qjs$(EXE)) --std ./tests/test_worker.js && \
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- ./qjs$(EXE) --std ./tests/test_std_nanvix.js && \
+	    -- $(abspath qjs$(EXE)) --std ./tests/test_std_nanvix.js && \
 	  rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img'
 else
 	@echo "  Running tests via nanvixd.elf standalone..."
@@ -182,28 +182,28 @@ else
 	"$(SYSROOT_PATH)/bin/mkramfs.elf" -o /tmp/rootfs.img /tmp/nanvix-ramfs/
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) ./tests/test_closure.js
+	  -- $(abspath qjs$(EXE)) ./tests/test_closure.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) ./tests/test_language.js
+	  -- $(abspath qjs$(EXE)) ./tests/test_language.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) --std ./tests/test_builtin.js
+	  -- $(abspath qjs$(EXE)) --std ./tests/test_builtin.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) ./tests/test_loop.js
+	  -- $(abspath qjs$(EXE)) ./tests/test_loop.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) ./tests/test_bigint.js
+	  -- $(abspath qjs$(EXE)) ./tests/test_bigint.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) ./tests/test_cyclic_import.js
+	  -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) --std ./tests/test_worker.js
+	  -- $(abspath qjs$(EXE)) --std ./tests/test_worker.js
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- ./qjs$(EXE) --std ./tests/test_std_nanvix.js
+	  -- $(abspath qjs$(EXE)) --std ./tests/test_std_nanvix.js
 	@rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img
 endif
 else
