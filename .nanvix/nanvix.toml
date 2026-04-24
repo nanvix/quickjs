@@ -1,7 +1,7 @@
 [package]
 name = "quickjs"
 version = "2025-09-13"
-nanvix-version = "0.12.461"
+nanvix-version = "0.12.470"
 
 [builds]
 [builds.matrix]
