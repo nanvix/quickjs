@@ -11,9 +11,12 @@ Usage:
     ./z clean     # Remove build artifacts
 """
 
+import sys
 from pathlib import Path
 
 from nanvix_zutil import CFG_SYSROOT, CFG_TOOLCHAIN, EXIT_MISSING_DEP, ZScript, log
+
+IS_WINDOWS = sys.platform == "win32"
 
 # Makefile variable names (build-system-specific).
 _MAKE_VAR_CONFIG = "CONFIG_NANVIX"
@@ -74,9 +77,42 @@ class QuickJSBuild(ZScript):
         Without targets, runs the full suite (smoke + integration + functional).
         With targets (e.g. ``./z test -- test-smoke test-integration``), passes
         them directly to the Makefile.
+
+        On Windows, runs a native smoke test since the Makefile requires
+        a cross-compilation toolchain or Docker that is not available.
         """
+        if IS_WINDOWS:
+            self._run_tests_windows()
+            return
         targets = self.targets if self.targets else ["test"]
         self.run(*self._make_args(*targets), cwd=self.repo_root)
+
+    def _run_tests_windows(self) -> None:
+        """Run QuickJS smoke tests on Windows.
+
+        Verifies that the cross-compiled binaries exist and have
+        reasonable sizes.  The ELF binaries are built on Linux and
+        downloaded as CI artifacts.
+        """
+        print("=== QuickJS smoke tests (Windows) ===")
+        expected = [
+            ("qjs.elf", 1000),
+            ("qjsc.elf", 1000),
+            ("libquickjs.a", 1000),
+        ]
+        for name, min_size in expected:
+            path = self.repo_root / name
+            if not path.is_file():
+                log.fatal(
+                    f"{name} not found at {path}",
+                    code=EXIT_MISSING_DEP,
+                    hint="Ensure the Linux build artifacts were downloaded.",
+                )
+            size = path.stat().st_size
+            if size < min_size:
+                log.fatal(f"{name} too small ({size} bytes)")
+            print(f"  OK: {name} ({size} bytes)")
+        print("  PASS: QuickJS smoke tests (Windows)")
 
     def release(self) -> None:
         """Package the QuickJS release tarball and verify it."""
