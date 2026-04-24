@@ -90,15 +90,14 @@ class QuickJSBuild(ZScript):
     def _run_tests_windows(self) -> None:
         """Run QuickJS smoke tests on Windows.
 
-        Verifies that the cross-compiled binaries exist and have
-        reasonable sizes.  The ELF binaries are built on Linux and
-        downloaded as CI artifacts.
+        Verifies that the cross-compiled ELF binaries exist and have
+        reasonable sizes.  Only .elf files are downloaded from Linux
+        build artifacts.
         """
         print("=== QuickJS smoke tests (Windows) ===")
         expected = [
             ("qjs.elf", 1000),
             ("qjsc.elf", 1000),
-            ("libquickjs.a", 1000),
         ]
         for name, min_size in expected:
             path = self.repo_root / name
