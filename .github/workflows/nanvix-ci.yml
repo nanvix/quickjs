@@ -29,6 +29,7 @@ jobs:
     with:
       zutil-version: "v0.7.26"
       memory-sizes: '["128mb","256mb"]'
+      process-modes: '["standalone"]'
       caller-event-name: ${{ github.event_name }}
       windows-test: true
     secrets:
@@ -46,6 +47,7 @@ jobs:
     with:
       zutil-version: "v0.7.26"
       memory-sizes: '["128mb","256mb"]'
+      process-modes: '["standalone"]'
       caller-event-name: 'schedule'
       windows-test: true
     secrets:
