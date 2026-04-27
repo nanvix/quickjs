@@ -141,6 +141,9 @@ ifdef CONFIG_NANVIX_DOCKER
 	     $(DOCKER_WORKSPACE_PATH)/tests/test_loop.js \
 	     $(DOCKER_WORKSPACE_PATH)/tests/test_bigint.js \
 	     $(DOCKER_WORKSPACE_PATH)/tests/test_cyclic_import.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_worker.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_worker_module.js \
+	     $(DOCKER_WORKSPACE_PATH)/tests/test_std_nanvix.js \
 	     $(DOCKER_WORKSPACE_PATH)/tests/assert.js \
 	     $(DOCKER_WORKSPACE_PATH)/tests/fixture_cyclic_import.js \
 	     /tmp/nanvix-ramfs/tests/ && \
@@ -163,6 +166,12 @@ ifdef CONFIG_NANVIX_DOCKER
 	  timeout --foreground 120 ./bin/nanvixd.elf \
 	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
 	    -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- $(abspath qjs$(EXE)) --std ./tests/test_worker.js && \
+	  timeout --foreground 120 ./bin/nanvixd.elf \
+	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	    -- $(abspath qjs$(EXE)) --std ./tests/test_std_nanvix.js && \
 	  rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img'
 else
 	@echo "  Running tests via nanvixd.elf standalone..."
@@ -171,6 +180,8 @@ else
 	@cp $(abspath tests/test_closure.js) $(abspath tests/test_language.js) \
 	    $(abspath tests/test_builtin.js) $(abspath tests/test_loop.js) \
 	    $(abspath tests/test_bigint.js) $(abspath tests/test_cyclic_import.js) \
+	    $(abspath tests/test_worker.js) $(abspath tests/test_worker_module.js) \
+	    $(abspath tests/test_std_nanvix.js) \
 	    $(abspath tests/assert.js) $(abspath tests/fixture_cyclic_import.js) \
 	    /tmp/nanvix-ramfs/tests/
 	"$(SYSROOT_PATH)/bin/mkramfs.elf" -o /tmp/rootfs.img /tmp/nanvix-ramfs/
@@ -192,6 +203,12 @@ else
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
 	  -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- $(abspath qjs$(EXE)) --std ./tests/test_worker.js
+	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
+	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
+	  -- $(abspath qjs$(EXE)) --std ./tests/test_std_nanvix.js
 	@rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img
 endif
 else
