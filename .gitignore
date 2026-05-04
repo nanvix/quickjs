@@ -30,15 +30,6 @@ run_octane
 run_sunspider_like
 libwinpthread*.dll
 
-# Nanvix build state (keep .nanvix/z.py tracked)
-.nanvix/venv/
-.nanvix/cache/
-.nanvix/sysroot/
-.nanvix/buildroot/
-.nanvix/env.json
-.nanvix/nanvix.lock
-.nanvix/release/
-.nanvix/_test_staging/
 dist/
 nanvix-artifacts/
 qjs.elf

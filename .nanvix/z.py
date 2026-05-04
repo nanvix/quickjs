@@ -63,9 +63,9 @@ class QuickJSBuild(ZScript):
         args.extend(targets)
         return args
 
-    def setup(self) -> None:
+    def setup(self) -> bool:
         """Download the Nanvix sysroot."""
-        super().setup()
+        return super().setup()
 
     def build(self) -> None:
         """Cross-compile qjs.elf, qjsc.elf, and libquickjs.a for Nanvix."""
