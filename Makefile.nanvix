@@ -255,10 +255,10 @@ package: all
 	cp -f libquickjs.a dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs/
 	-cp -f libquickjs.lto.a dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs/ 2>/dev/null || true
 	cp -f quickjs.h quickjs-libc.h dist/$(ARTIFACT_NAME)/sysroot/include/quickjs/
-	tar -czf dist/$(ARTIFACT_NAME).tar.gz -C dist/$(ARTIFACT_NAME) sysroot
-	@echo "  Package: dist/$(ARTIFACT_NAME).tar.gz"
+	tar -cjf dist/$(ARTIFACT_NAME).tar.bz2 -C dist/$(ARTIFACT_NAME) sysroot
+	@echo "  Package: dist/$(ARTIFACT_NAME).tar.bz2"
 	@echo "  Contents:"
-	@tar tzf dist/$(ARTIFACT_NAME).tar.gz | head -20
+	@tar tjf dist/$(ARTIFACT_NAME).tar.bz2 | head -20
 
 # ===========================================================================
 # Verify Package
@@ -267,34 +267,34 @@ package: all
 verify-package:
 	@echo "=== Verifying QuickJS package ==="
 	$(eval ARTIFACT_NAME := quickjs-$(PLATFORM)-$(PROCESS_MODE)-$(MEMORY_SIZE))
-	@TARBALL="dist/$(ARTIFACT_NAME).tar.gz"; \
+	@TARBALL="dist/$(ARTIFACT_NAME).tar.bz2"; \
 	if [ ! -f "$$TARBALL" ]; then \
 	  echo "FAIL: Package tarball not found: $$TARBALL"; exit 1; \
 	fi; \
 	echo "Package contents:"; \
-	tar tzf "$$TARBALL"; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/bin/'; then \
+	tar tjf "$$TARBALL"; \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/bin/'; then \
 	  echo "FAIL: Package missing sysroot/bin/ entries"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/'; then \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/'; then \
 	  echo "FAIL: Package missing sysroot/lib/quickjs/ entries"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/include/quickjs/'; then \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/include/quickjs/'; then \
 	  echo "FAIL: Package missing sysroot/include/quickjs/ entries"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/libquickjs.a'; then \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/libquickjs.a'; then \
 	  echo "FAIL: Package missing sysroot/lib/quickjs/libquickjs.a"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs.h'; then \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs.h'; then \
 	  echo "FAIL: Package missing sysroot/include/quickjs/quickjs.h"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs-libc.h'; then \
+	if ! tar tjf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs-libc.h'; then \
 	  echo "FAIL: Package missing sysroot/include/quickjs/quickjs-libc.h"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q "sysroot/bin/qjs$(EXE)"; then \
+	if ! tar tjf "$$TARBALL" | grep -q "sysroot/bin/qjs$(EXE)"; then \
 	  echo "FAIL: Package missing sysroot/bin/qjs$(EXE) executable"; exit 1; \
 	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q "sysroot/bin/qjsc$(EXE)"; then \
+	if ! tar tjf "$$TARBALL" | grep -q "sysroot/bin/qjsc$(EXE)"; then \
 	  echo "FAIL: Package missing sysroot/bin/qjsc$(EXE) executable"; exit 1; \
 	fi; \
 	echo "  PASS: QuickJS package verification"
