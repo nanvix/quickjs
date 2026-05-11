@@ -10,7 +10,7 @@
 # settings and adds standardized test/package/release targets for nanvix-zutil.
 
 # Nanvix Docker image for cross-compilation (used as fallback if native toolchain not found)
-NANVIX_DOCKER_IMAGE ?= ghcr.io/nanvix/toolchain-quickjs:latest
+NANVIX_DOCKER_IMAGE ?= ghcr.io/nanvix/toolchain-quickjs@sha256:e6fc5d3d4ed338c1416c08dbe9d8ac1353f696046716774bcc3ac6d41d2375ad
 
 # Platform and deployment configuration (passed by nanvix-zutil / z.py)
 PLATFORM ?= hyperlight
@@ -67,15 +67,6 @@ ifdef CONFIG_NANVIX
       -w $(DOCKER_WORKSPACE_PATH) \
       -e HOME=/tmp \
       $(NANVIX_DOCKER_IMAGE)
-    DOCKER_KVM_GID := $(shell stat -c '%g' /dev/kvm 2>/dev/null || echo 0)
-    DOCKER_RUN_FUNCTIONAL := docker run --rm --device /dev/kvm \
-      --user $(DOCKER_UID):$(DOCKER_GID) --group-add $(DOCKER_KVM_GID) \
-      -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
-      -v $(SYSROOT_PATH):$(DOCKER_SYSROOT_PATH):ro \
-      -w $(DOCKER_SYSROOT_PATH) \
-      -e HOME=/tmp \
-      -e USER=$(shell whoami) \
-      $(NANVIX_DOCKER_IMAGE)
   endif
 else
   ifneq ($(MAKECMDGOALS),clean)
@@ -130,41 +121,6 @@ test-integration: test-smoke
 test-functional: test-integration
 	@echo "=== QuickJS functional tests ==="
 ifeq ($(PROCESS_MODE),standalone)
-ifdef CONFIG_NANVIX_DOCKER
-	@echo "  Running tests via nanvixd.elf standalone (Docker)..."
-	$(DOCKER_RUN_FUNCTIONAL) sh -c '\
-	  mkdir -p /tmp/nanvix-ramfs/tests && \
-	  cp $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) /tmp/nanvix-ramfs/ && \
-	  cp $(DOCKER_WORKSPACE_PATH)/tests/test_closure.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/test_language.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/test_builtin.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/test_loop.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/test_bigint.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/test_cyclic_import.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/assert.js \
-	     $(DOCKER_WORKSPACE_PATH)/tests/fixture_cyclic_import.js \
-	     /tmp/nanvix-ramfs/tests/ && \
-	  ./bin/mkramfs.elf -o /tmp/rootfs.img /tmp/nanvix-ramfs/ && \
-	  timeout --foreground 120 ./bin/nanvixd.elf \
-	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- $(abspath qjs$(EXE)) ./tests/test_closure.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf \
-	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- $(abspath qjs$(EXE)) ./tests/test_language.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf \
-	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- $(abspath qjs$(EXE)) --std ./tests/test_builtin.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf \
-	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- $(abspath qjs$(EXE)) ./tests/test_loop.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf \
-	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- $(abspath qjs$(EXE)) ./tests/test_bigint.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf \
-	    -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	    -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js && \
-	  rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img'
-else
 	@echo "  Running tests via nanvixd.elf standalone..."
 	@rm -rf /tmp/nanvix-ramfs && mkdir -p /tmp/nanvix-ramfs/tests
 	@cp $(abspath qjs$(EXE)) /tmp/nanvix-ramfs/
@@ -193,27 +149,6 @@ else
 	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
 	  -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js
 	@rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img
-endif
-else
-ifdef CONFIG_NANVIX_DOCKER
-	@echo "  Running tests via nanvixd.elf (Docker)..."
-	$(DOCKER_RUN_FUNCTIONAL) sh -c '\
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_closure.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_language.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) --std $(DOCKER_WORKSPACE_PATH)/tests/test_builtin.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_loop.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_bigint.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) $(DOCKER_WORKSPACE_PATH)/tests/test_cyclic_import.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) --std $(DOCKER_WORKSPACE_PATH)/tests/test_worker.js && \
-	  timeout --foreground 120 ./bin/nanvixd.elf -- \
-	    $(DOCKER_WORKSPACE_PATH)/qjs$(EXE) --std $(DOCKER_WORKSPACE_PATH)/tests/test_std_nanvix.js'
 else
 	@echo "  Running tests via nanvixd.elf..."
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
@@ -232,7 +167,6 @@ else
 	  $(abspath qjs$(EXE)) --std $(abspath tests/test_worker.js)
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
 	  $(abspath qjs$(EXE)) --std $(abspath tests/test_std_nanvix.js)
-endif
 endif
 	@echo "  PASS: QuickJS functional tests"
 
