@@ -121,34 +121,12 @@ test-integration: test-smoke
 test-functional: test-integration
 	@echo "=== QuickJS functional tests ==="
 ifeq ($(PROCESS_MODE),standalone)
-	@echo "  Running tests via nanvixd.elf standalone..."
-	@rm -rf /tmp/nanvix-ramfs && mkdir -p /tmp/nanvix-ramfs/tests
-	@cp $(abspath qjs$(EXE)) /tmp/nanvix-ramfs/
-	@cp $(abspath tests/test_closure.js) $(abspath tests/test_language.js) \
-	    $(abspath tests/test_builtin.js) $(abspath tests/test_loop.js) \
-	    $(abspath tests/test_bigint.js) $(abspath tests/test_cyclic_import.js) \
-	    $(abspath tests/assert.js) $(abspath tests/fixture_cyclic_import.js) \
-	    /tmp/nanvix-ramfs/tests/
-	"$(SYSROOT_PATH)/bin/mkramfs.elf" -o /tmp/rootfs.img /tmp/nanvix-ramfs/
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
-	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- $(abspath qjs$(EXE)) ./tests/test_closure.js
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
-	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- $(abspath qjs$(EXE)) ./tests/test_language.js
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
-	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- $(abspath qjs$(EXE)) --std ./tests/test_builtin.js
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
-	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- $(abspath qjs$(EXE)) ./tests/test_loop.js
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
-	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- $(abspath qjs$(EXE)) ./tests/test_bigint.js
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf \
-	  -bin-dir ./bin -ramfs /tmp/rootfs.img \
-	  -- $(abspath qjs$(EXE)) ./tests/test_cyclic_import.js
-	@rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img
+	@echo "  NOTE: Standalone functional tests are handled via ./z.sh."
+	@echo "  Delegating to: ./z.sh test test-functional"
+	@NANVIX_HOME="$(NANVIX_HOME)" NANVIX_TOOLCHAIN="$(NANVIX_TOOLCHAIN)" \
+	  PLATFORM="$(PLATFORM)" PROCESS_MODE="$(PROCESS_MODE)" \
+	  MEMORY_SIZE="$(MEMORY_SIZE)" \
+	  ./z.sh test test-functional
 else
 	@echo "  Running tests via nanvixd.elf..."
 	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
