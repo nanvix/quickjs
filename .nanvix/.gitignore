@@ -3,10 +3,7 @@ venv/
 cache/
 sysroot/
 buildroot/
-release/
-_test_staging/
 .yamllint.yml
 black.toml
 env.json
-nanvix.lock
 pyrightconfig.json
