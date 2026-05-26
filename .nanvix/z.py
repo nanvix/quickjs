@@ -18,11 +18,14 @@ from pathlib import Path
 
 from nanvix_zutil import (
     CFG_SYSROOT,
-    TOOLCHAIN_CONTAINER_PATH,
     EXIT_MISSING_DEP,
+    TOOLCHAIN_CONTAINER_PATH,
     ZScript,
     log,
+    make_initrd,
+    run,
 )
+from nanvix_zutil.helpers import InitRdArgs
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -77,7 +80,9 @@ class QuickJSBuild(ZScript):
                 hint="Run `./z setup` first to download the sysroot.",
             )
         toolchain_p = str(TOOLCHAIN_CONTAINER_PATH)
-        sysroot_p = self.translate_path(Path(sysroot))
+        sysroot_p = (
+            self.docker.translate_path(Path(sysroot)) if self.docker else Path(sysroot)
+        )
 
         args = [
             "make",
@@ -115,7 +120,7 @@ class QuickJSBuild(ZScript):
 
     def build(self) -> None:
         """Cross-compile qjs.elf, qjsc.elf, and libquickjs.a for Nanvix."""
-        self.run(*self._make_args("all"), cwd=self.repo_root, docker=True)
+        run(*self._make_args("all"), cwd=self.repo_root, docker=self.docker)
 
     def test(self) -> None:
         """Run the QuickJS test suite.
@@ -148,19 +153,17 @@ class QuickJSBuild(ZScript):
                 if "test-smoke" not in make_targets:
                     make_targets.insert(0, "test-smoke")
             if make_targets:
-                self.run(
+                run(
                     *self._make_args(*make_targets),
                     cwd=self.repo_root,
-                    docker=False,
                 )
             if needs_functional:
                 self._run_functional_standalone()
         else:
             targets = self.targets if self.targets else ["test"]
-            self.run(
+            run(
                 *self._make_args(*targets),
                 cwd=self.repo_root,
-                docker=False,
             )
 
     # ------------------------------------------------------------------
@@ -284,12 +287,11 @@ class QuickJSBuild(ZScript):
             for tf in _FUNCTIONAL_TEST_FILES + _STANDALONE_RAMFS_SUPPORT_FILES:
                 shutil.copy2(self.repo_root / tf, ramfs_tests / Path(tf).name)
 
-            self.run(
+            run(
                 str(mkramfs),
                 "-o",
                 str(ramfs_img),
                 str(ramfs_dir),
-                docker=False,
             )
 
             for tf in _FUNCTIONAL_TEST_FILES:
@@ -300,9 +302,9 @@ class QuickJSBuild(ZScript):
                     app_args.append("--std")
                 app_args.append(guest_path)
 
-                initrd = self.make_initrd("qjs.elf", app_args=app_args)
+                initrd = make_initrd(self, "qjs.elf", InitRdArgs(app_args=app_args))
                 try:
-                    self.run(
+                    run(
                         str(nanvixd),
                         "-bin-dir",
                         str(sysroot / "bin"),
@@ -310,7 +312,6 @@ class QuickJSBuild(ZScript):
                         str(ramfs_img),
                         "--",
                         str(initrd),
-                        docker=False,
                         timeout=_NANVIXD_TIMEOUT,
                     )
                 finally:
@@ -363,12 +364,11 @@ class QuickJSBuild(ZScript):
             (ramfs_dir / "tmp").mkdir()
             ramfs_img = tmpdir_path / "rootfs.img"
 
-            self.run(
+            run(
                 str(mkramfs),
                 "-o",
                 str(ramfs_img),
                 str(ramfs_dir),
-                docker=False,
             )
 
             for tf in all_tests:
@@ -386,7 +386,7 @@ class QuickJSBuild(ZScript):
                 if std_flag:
                     cmd.append("--std")
                 cmd.append(test_path)
-                self.run(*cmd, docker=False, timeout=_NANVIXD_TIMEOUT)
+                run(*cmd, timeout=_NANVIXD_TIMEOUT)
 
         print("  PASS: QuickJS functional tests")
 
@@ -399,18 +399,17 @@ class QuickJSBuild(ZScript):
                     code=EXIT_MISSING_DEP,
                     hint="Run `./z build` first.",
                 )
-        self.run(*self._make_args("package"), cwd=self.repo_root, docker=False)
-        self.run(*self._make_args("verify-package"), cwd=self.repo_root, docker=False)
+        run(*self._make_args("package"), cwd=self.repo_root)
+        run(*self._make_args("verify-package"), cwd=self.repo_root)
 
     def clean(self) -> None:
         """Remove build artifacts."""
-        self.run(
+        run(
             "make",
             "-f",
             "Makefile.nanvix",
             "clean",
             cwd=self.repo_root,
-            docker=False,
         )
 
 
