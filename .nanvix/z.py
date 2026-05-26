@@ -27,7 +27,6 @@ from nanvix_zutil import (
 IS_WINDOWS = sys.platform == "win32"
 
 # Makefile variable names (build-system-specific).
-_MAKE_VAR_CONFIG = "CONFIG_NANVIX"
 _MAKE_VAR_HOME = "NANVIX_HOME"
 _MAKE_VAR_TOOLCHAIN = "NANVIX_TOOLCHAIN"
 _MAKE_VAR_PLATFORM = "PLATFORM"
@@ -77,15 +76,13 @@ class QuickJSBuild(ZScript):
                 code=EXIT_MISSING_DEP,
                 hint="Run `./z setup` first to download the sysroot.",
             )
-        toolchain = str(TOOLCHAIN_CONTAINER_PATH)
+        toolchain_p = str(TOOLCHAIN_CONTAINER_PATH)
         sysroot_p = self.translate_path(Path(sysroot))
-        toolchain_p = toolchain
 
         args = [
             "make",
             "-f",
             "Makefile.nanvix",
-            f"{_MAKE_VAR_CONFIG}=y",
             f"{_MAKE_VAR_HOME}={sysroot_p}",
             f"{_MAKE_VAR_TOOLCHAIN}={toolchain_p}",
         ]
@@ -118,7 +115,7 @@ class QuickJSBuild(ZScript):
 
     def build(self) -> None:
         """Cross-compile qjs.elf, qjsc.elf, and libquickjs.a for Nanvix."""
-        self.run(*self._make_args("all"), cwd=self.repo_root)
+        self.run(*self._make_args("all"), cwd=self.repo_root, docker=True)
 
     def test(self) -> None:
         """Run the QuickJS test suite.
@@ -140,23 +137,31 @@ class QuickJSBuild(ZScript):
             if not targets or "test" in targets:
                 # Full suite or umbrella "test": run all prerequisites.
                 make_targets = ["test-smoke", "test-integration"]
-            elif needs_functional and make_targets:
-                # Functional requested alongside other explicit targets:
-                # ensure the prerequisite chain is complete.
+            elif needs_functional:
+                # Functional requested (alone or alongside other explicit
+                # targets): ensure the prerequisite chain is complete.
+                # The Makefile no longer delegates standalone functional
+                # tests back to z.py, so we must run smoke/integration
+                # here ourselves.
                 if "test-integration" not in make_targets:
                     make_targets.append("test-integration")
                 if "test-smoke" not in make_targets:
                     make_targets.insert(0, "test-smoke")
-            # When only "test-functional" is requested (e.g. delegated
-            # from the Makefile which already ran prerequisites), skip
-            # Make targets to avoid double-execution.
             if make_targets:
-                self.run(*self._make_args(*make_targets), cwd=self.repo_root)
+                self.run(
+                    *self._make_args(*make_targets),
+                    cwd=self.repo_root,
+                    docker=False,
+                )
             if needs_functional:
                 self._run_functional_standalone()
         else:
             targets = self.targets if self.targets else ["test"]
-            self.run(*self._make_args(*targets), cwd=self.repo_root)
+            self.run(
+                *self._make_args(*targets),
+                cwd=self.repo_root,
+                docker=False,
+            )
 
     # ------------------------------------------------------------------
     # Windows test implementation
@@ -387,8 +392,15 @@ class QuickJSBuild(ZScript):
 
     def release(self) -> None:
         """Package the QuickJS release tarball and verify it."""
-        self.run(*self._make_args("package"), cwd=self.repo_root)
-        self.run(*self._make_args("verify-package"), cwd=self.repo_root)
+        for artifact in ("qjs.elf", "qjsc.elf", "libquickjs.a"):
+            if not (self.repo_root / artifact).is_file():
+                log.fatal(
+                    f"{artifact} not found.",
+                    code=EXIT_MISSING_DEP,
+                    hint="Run `./z build` first.",
+                )
+        self.run(*self._make_args("package"), cwd=self.repo_root, docker=False)
+        self.run(*self._make_args("verify-package"), cwd=self.repo_root, docker=False)
 
     def clean(self) -> None:
         """Remove build artifacts."""
@@ -398,6 +410,7 @@ class QuickJSBuild(ZScript):
             "Makefile.nanvix",
             "clean",
             cwd=self.repo_root,
+            docker=False,
         )
 
 
