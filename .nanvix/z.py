@@ -18,6 +18,7 @@ from pathlib import Path
 
 from nanvix_zutil import (
     CFG_SYSROOT,
+    DockerConfig,
     EXIT_MISSING_DEP,
     TOOLCHAIN_CONTAINER_PATH,
     ZScript,
@@ -69,6 +70,21 @@ _STANDALONE_RAMFS_SUPPORT_FILES = [
 
 class QuickJSBuild(ZScript):
     """Build script for nanvix/quickjs."""
+
+    # Build artifacts produced by `make all` that must be copied back from
+    # the container-local build directory to the host workspace on Windows
+    # (where `build_windows_run_cmd` uses tar-based source copying).
+    _BUILD_OUTPUTS = [
+        "qjs.elf",
+        "qjsc.elf",
+        "run-test262.elf",
+        "libquickjs.a",
+    ]
+
+    def docker_config(self, image: str) -> DockerConfig:
+        cfg = super().docker_config(image)
+        cfg.output_files = list(self._BUILD_OUTPUTS)
+        return cfg
 
     def _make_args(self, *targets: str) -> list[str]:
         """Build the common make argument list."""
@@ -218,7 +234,8 @@ class QuickJSBuild(ZScript):
                 log.fatal(
                     f"{name} not found at {path}",
                     code=EXIT_MISSING_DEP,
-                    hint="Ensure the Linux build artifacts were downloaded.",
+                    hint="Run `./z build` first, or ensure the Linux build "
+                    "artifacts were downloaded (CI).",
                 )
             size = path.stat().st_size
             if size < min_size:
@@ -241,6 +258,8 @@ class QuickJSBuild(ZScript):
             log.fatal(
                 f"run-test262.elf not found at {path}",
                 code=EXIT_MISSING_DEP,
+                hint="Run `./z build` first, or ensure the Linux build "
+                "artifacts were downloaded (CI).",
             )
         size = path.stat().st_size
         print(f"  OK: run-test262.elf ({size} bytes)")
