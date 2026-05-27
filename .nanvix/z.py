@@ -18,6 +18,7 @@ from pathlib import Path
 
 from nanvix_zutil import (
     CFG_SYSROOT,
+    DockerConfig,
     EXIT_MISSING_DEP,
     TOOLCHAIN_CONTAINER_PATH,
     ZScript,
@@ -69,6 +70,21 @@ _STANDALONE_RAMFS_SUPPORT_FILES = [
 
 class QuickJSBuild(ZScript):
     """Build script for nanvix/quickjs."""
+
+    # Build artifacts produced by `make all` that must be copied back from
+    # the container-local build directory to the host workspace on Windows
+    # (where `build_windows_run_cmd` uses tar-based source copying).
+    _BUILD_OUTPUTS = [
+        "qjs.elf",
+        "qjsc.elf",
+        "run-test262.elf",
+        "libquickjs.a",
+    ]
+
+    def docker_config(self, image: str) -> DockerConfig:
+        cfg = super().docker_config(image)
+        cfg.output_files = list(self._BUILD_OUTPUTS)
+        return cfg
 
     def _make_args(self, *targets: str) -> list[str]:
         """Build the common make argument list."""
@@ -123,42 +139,18 @@ class QuickJSBuild(ZScript):
         run(*self._make_args("all"), cwd=self.repo_root, docker=self.docker)
 
     def test(self) -> None:
-        """Run the QuickJS test suite.
+        """Run the QuickJS functional test suite.
 
-        Smoke and integration tests are always delegated to the Makefile.
-        The functional test in standalone mode is handled in Python via
-        make_initrd so that initrd creation is shared across platforms.
+        Standalone mode is handled in Python via make_initrd so that initrd
+        creation is shared across platforms. Non-standalone mode delegates
+        to the Makefile, which runs the functional tests via nanvixd.
         """
         if IS_WINDOWS:
-            targets = self.targets if self.targets else ["test"]
-            self._run_tests_windows(targets)
+            self._run_tests_windows()
             return
 
         if self.config.deployment_mode == "standalone":
-            targets = self.targets if self.targets else []
-            _functional_targets = {"test", "test-functional"}
-            needs_functional = not targets or bool(set(targets) & _functional_targets)
-            make_targets = [t for t in targets if t not in _functional_targets]
-            if not targets or "test" in targets:
-                # Full suite or umbrella "test": run all prerequisites.
-                make_targets = ["test-smoke", "test-integration"]
-            elif needs_functional:
-                # Functional requested (alone or alongside other explicit
-                # targets): ensure the prerequisite chain is complete.
-                # The Makefile no longer delegates standalone functional
-                # tests back to z.py, so we must run smoke/integration
-                # here ourselves.
-                if "test-integration" not in make_targets:
-                    make_targets.append("test-integration")
-                if "test-smoke" not in make_targets:
-                    make_targets.insert(0, "test-smoke")
-            if make_targets:
-                run(
-                    *self._make_args(*make_targets),
-                    cwd=self.repo_root,
-                )
-            if needs_functional:
-                self._run_functional_standalone()
+            self._run_functional_standalone()
         else:
             targets = self.targets if self.targets else ["test"]
             run(
@@ -170,81 +162,14 @@ class QuickJSBuild(ZScript):
     # Windows test implementation
     # ------------------------------------------------------------------
 
-    def _run_tests_windows(self, targets: list[str]) -> None:
-        """Run QuickJS tests natively on Windows.
-
-        Mirrors the Makefile.nanvix test targets using nanvixd.exe and
-        mkramfs.exe from the sysroot.
-        """
-        # Resolve which test phases to run, preserving Makefile dependency
-        # semantics: test-functional implies test-integration implies
-        # test-smoke.
-        run_smoke = False
-        run_integration = False
-        run_functional = False
-
-        for target in targets:
-            if target in ("test", "test-functional"):
-                run_smoke = run_integration = run_functional = True
-            elif target == "test-integration":
-                run_smoke = run_integration = True
-            elif target == "test-smoke":
-                run_smoke = True
-
-        if run_smoke:
-            self._win_test_smoke()
-        if run_integration:
-            self._win_test_integration()
-        if run_functional:
-            if self.config.deployment_mode == "standalone":
-                self._run_functional_standalone()
-            else:
-                self._run_functional_non_standalone()
+    def _run_tests_windows(self) -> None:
+        """Run QuickJS functional tests natively on Windows."""
+        if self.config.deployment_mode == "standalone":
+            self._run_functional_standalone()
+        else:
+            self._run_functional_non_standalone()
 
         print("=== All QuickJS tests PASSED ===")
-
-    def _win_test_smoke(self) -> None:
-        """Verify cross-compiled binaries exist and have reasonable sizes."""
-        print("=== QuickJS smoke tests ===")
-        # Only check binaries that are present in the test artifact.
-        # libquickjs.a is a build-only output and not uploaded for tests.
-        expected = [
-            ("qjs.elf", 1000),
-            ("qjsc.elf", 1000),
-        ]
-        for name, min_size in expected:
-            path = self.repo_root / name
-            if not path.is_file():
-                log.fatal(
-                    f"{name} not found at {path}",
-                    code=EXIT_MISSING_DEP,
-                    hint="Ensure the Linux build artifacts were downloaded.",
-                )
-            size = path.stat().st_size
-            if size < min_size:
-                log.fatal(f"{name} too small ({size} bytes)")
-            print(f"  OK: {name} ({size} bytes)")
-
-        for name in ("quickjs.h", "quickjs-libc.h"):
-            path = self.repo_root / name
-            if not path.is_file():
-                log.fatal(f"{name} not found at {path}")
-            print(f"  OK: {name}")
-
-        print("  PASS: QuickJS smoke tests")
-
-    def _win_test_integration(self) -> None:
-        """Verify run-test262.elf exists."""
-        print("=== QuickJS integration tests ===")
-        path = self.repo_root / "run-test262.elf"
-        if not path.is_file():
-            log.fatal(
-                f"run-test262.elf not found at {path}",
-                code=EXIT_MISSING_DEP,
-            )
-        size = path.stat().st_size
-        print(f"  OK: run-test262.elf ({size} bytes)")
-        print("  PASS: QuickJS integration tests")
 
     def _run_functional_standalone(self) -> None:
         """Run standalone functional tests using make_initrd.

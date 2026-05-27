@@ -35,3 +35,6 @@ nanvix-artifacts/
 qjs.elf
 qjsc.elf
 run-test262.elf
+
+# Nanvix
+nanvixd_*log
