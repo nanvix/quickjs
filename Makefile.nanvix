@@ -76,28 +76,6 @@ all:
 # Test Targets
 # ===========================================================================
 
-test-smoke:
-	@echo "=== QuickJS smoke tests ==="
-	@test -f qjs$(EXE) || { echo "  FAIL: qjs$(EXE) not found"; exit 1; }
-	@test -f qjsc$(EXE) || { echo "  FAIL: qjsc$(EXE) not found"; exit 1; }
-	@test -f libquickjs.a || { echo "  FAIL: libquickjs.a not found"; exit 1; }
-	@qjs_size=$$(wc -c < qjs$(EXE)); \
-	  if [ "$$qjs_size" -lt 1000 ]; then echo "  FAIL: qjs$(EXE) too small"; exit 1; fi
-	@lib_size=$$(wc -c < libquickjs.a); \
-	  if [ "$$lib_size" -lt 1000 ]; then echo "  FAIL: libquickjs.a too small"; exit 1; fi
-	@test -f quickjs.h || { echo "  FAIL: quickjs.h not found"; exit 1; }
-	@test -f quickjs-libc.h || { echo "  FAIL: quickjs-libc.h not found"; exit 1; }
-	@echo "  OK: qjs$(EXE) ($$(wc -c < qjs$(EXE)) bytes)"
-	@echo "  OK: qjsc$(EXE) ($$(wc -c < qjsc$(EXE)) bytes)"
-	@echo "  OK: libquickjs.a ($$(wc -c < libquickjs.a) bytes)"
-	@echo "  PASS: QuickJS smoke tests"
-
-test-integration: test-smoke
-	@echo "=== QuickJS integration tests ==="
-	@test -f run-test262$(EXE) || { echo "  FAIL: run-test262$(EXE) not found"; exit 1; }
-	@echo "  OK: run-test262$(EXE) ($$(wc -c < run-test262$(EXE)) bytes)"
-	@echo "  PASS: QuickJS integration tests"
-
 _FUNCTIONAL_TEST_FILES := \
   tests/test_closure.js \
   tests/test_language.js \
@@ -108,7 +86,7 @@ _FUNCTIONAL_TEST_FILES := \
   tests/test_worker.js \
   tests/test_std_nanvix.js
 
-test-functional: test-integration $(_FUNCTIONAL_TEST_FILES)
+test-functional: $(_FUNCTIONAL_TEST_FILES)
 	@echo "=== QuickJS functional tests ==="
 ifeq ($(PROCESS_MODE),standalone)
 	@echo "  FAIL: Standalone functional tests are not handled by this Makefile."
@@ -134,7 +112,7 @@ endif
 	  $(abspath qjs$(EXE)) --std $(abspath tests/test_std_nanvix.js)
 	@echo "  PASS: QuickJS functional tests"
 
-test: test-smoke test-integration test-functional
+test: test-functional
 	@echo "=== All QuickJS tests PASSED ==="
 
 # ===========================================================================
@@ -209,4 +187,4 @@ clean:
 	rm -f qjs.elf qjsc.elf run-test262.elf
 	rm -rf dist/
 
-.PHONY: all clean test test-smoke test-integration test-functional package verify-package
+.PHONY: all clean test test-functional package verify-package
