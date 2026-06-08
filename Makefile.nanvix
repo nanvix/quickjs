@@ -18,8 +18,9 @@
 
 # Some assumptions:
 # 1. This makefile is expected to be invoked via z.py.
-# 2. Build goals require the cross-toolchain at $(NANVIX_TOOLCHAIN); other
-#    goals (test-*, package, verify-package, clean) are pure host-side.
+# 2. Build goals (all, install) require the cross-toolchain at
+#    $(NANVIX_TOOLCHAIN) and the LIB_OUT/INCLUDE_OUT/BIN_OUT paths; other
+#    goals (test-*, clean) are pure host-side.
 # 3. Test and release targets assume build artifacts already exist; they
 #    fail fast with a hint if they don't. The expected workflow is
 #    `./z build` before `./z test` or `./z release`.
@@ -31,11 +32,21 @@ PLATFORM ?= hyperlight
 PROCESS_MODE ?= multi-process
 MEMORY_SIZE ?= 128mb
 
-_NANVIX_DOCKER_BUILD_GOALS := all
+_NANVIX_DOCKER_BUILD_GOALS := all install
 _NANVIX_GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
 
 # Ensure required variables are defined.
-_REQUIRED := PLATFORM PROCESS_MODE MEMORY_SIZE NANVIX_HOME NANVIX_TOOLCHAIN
+_REQUIRED := PLATFORM \
+    PROCESS_MODE \
+    MEMORY_SIZE \
+    NANVIX_HOME \
+    NANVIX_TOOLCHAIN \
+    NANVIX_ROOT \
+    OUT_DIR \
+    DIST_DIR \
+    LIB_OUT \
+    INCLUDE_OUT \
+    BIN_OUT
 ifneq ($(filter-out clean,$(_NANVIX_GOALS)),)
   $(foreach v,$(_REQUIRED),\
     $(if $($v),,$(error Required variable $v not set))\
@@ -43,6 +54,14 @@ ifneq ($(filter-out clean,$(_NANVIX_GOALS)),)
 endif
 
 SYSROOT_PATH := $(abspath $(NANVIX_HOME))
+
+# Artifacts staged by `install` into the release/test output tree so that
+# `./z release` (which packages release_dir()) can find them.  Headers
+# and the static library land under a `quickjs/` subdir to preserve the
+# `#include <quickjs/quickjs.h>` namespacing used by downstream consumers.
+BIN_ARTIFACTS     := qjs$(EXE) qjsc$(EXE)
+LIB_ARTIFACTS     := libquickjs.a
+INCLUDE_ARTIFACTS := quickjs.h quickjs-libc.h
 
 # ===========================================================================
 # Build Mode Variables
@@ -69,8 +88,22 @@ UPSTREAM_MAKE_ARGS := CONFIG_NANVIX=y \
 # Build Targets
 # ===========================================================================
 
-all:
+all: install
+
+# Build all upstream artifacts in a single recursive invocation.  Phony
+# (the upstream Makefile owns the real timestamps); install depends on
+# this so a standalone `make -f Makefile.nanvix install` also builds.
+_upstream-build:
 	$(MAKE) $(UPSTREAM_MAKE_ARGS) all
+
+# Stage built artifacts into the release/test output tree so that
+# `./z release` (which packages release_dir()) can find them.
+install: _upstream-build
+	@mkdir -p $(LIB_OUT)/quickjs $(INCLUDE_OUT)/quickjs $(BIN_OUT)
+	cp -f $(BIN_ARTIFACTS)     $(BIN_OUT)/
+	cp -f $(LIB_ARTIFACTS)     $(LIB_OUT)/quickjs/
+	cp -f $(INCLUDE_ARTIFACTS) $(INCLUDE_OUT)/quickjs/
+	-cp -f libquickjs.lto.a    $(LIB_OUT)/quickjs/ 2>/dev/null || true
 
 # ===========================================================================
 # Test Targets
@@ -116,75 +149,12 @@ test: test-functional
 	@echo "=== All QuickJS tests PASSED ==="
 
 # ===========================================================================
-# Package Target
-# ===========================================================================
-
-package: quickjs.h quickjs-libc.h
-	@echo "=== Packaging QuickJS release ==="
-	$(eval ARTIFACT_NAME := quickjs-$(PLATFORM)-$(PROCESS_MODE)-$(MEMORY_SIZE))
-	@test -f qjs$(EXE) || { echo "  FAIL: qjs$(EXE) not found; run './z build' first"; exit 1; }
-	@test -f qjsc$(EXE) || { echo "  FAIL: qjsc$(EXE) not found; run './z build' first"; exit 1; }
-	@test -f libquickjs.a || { echo "  FAIL: libquickjs.a not found; run './z build' first"; exit 1; }
-	rm -rf dist/$(ARTIFACT_NAME)
-	mkdir -p dist/$(ARTIFACT_NAME)/sysroot/bin \
-	         dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs \
-	         dist/$(ARTIFACT_NAME)/sysroot/include/quickjs
-	cp -f qjs$(EXE) dist/$(ARTIFACT_NAME)/sysroot/bin/
-	cp -f qjsc$(EXE) dist/$(ARTIFACT_NAME)/sysroot/bin/
-	cp -f libquickjs.a dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs/
-	-cp -f libquickjs.lto.a dist/$(ARTIFACT_NAME)/sysroot/lib/quickjs/ 2>/dev/null || true
-	cp -f quickjs.h quickjs-libc.h dist/$(ARTIFACT_NAME)/sysroot/include/quickjs/
-	tar -czf dist/$(ARTIFACT_NAME).tar.gz -C dist/$(ARTIFACT_NAME) sysroot
-	@echo "  Package: dist/$(ARTIFACT_NAME).tar.gz"
-	@echo "  Contents:"
-	@tar tzf dist/$(ARTIFACT_NAME).tar.gz | head -20
-
-# ===========================================================================
-# Verify Package
-# ===========================================================================
-
-verify-package:
-	@echo "=== Verifying QuickJS package ==="
-	$(eval ARTIFACT_NAME := quickjs-$(PLATFORM)-$(PROCESS_MODE)-$(MEMORY_SIZE))
-	@TARBALL="dist/$(ARTIFACT_NAME).tar.gz"; \
-	if [ ! -f "$$TARBALL" ]; then \
-	  echo "FAIL: Package tarball not found: $$TARBALL"; exit 1; \
-	fi; \
-	echo "Package contents:"; \
-	tar tzf "$$TARBALL"; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/bin/'; then \
-	  echo "FAIL: Package missing sysroot/bin/ entries"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/'; then \
-	  echo "FAIL: Package missing sysroot/lib/quickjs/ entries"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/include/quickjs/'; then \
-	  echo "FAIL: Package missing sysroot/include/quickjs/ entries"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/lib/quickjs/libquickjs.a'; then \
-	  echo "FAIL: Package missing sysroot/lib/quickjs/libquickjs.a"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs.h'; then \
-	  echo "FAIL: Package missing sysroot/include/quickjs/quickjs.h"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q 'sysroot/include/quickjs/quickjs-libc.h'; then \
-	  echo "FAIL: Package missing sysroot/include/quickjs/quickjs-libc.h"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q "sysroot/bin/qjs$(EXE)"; then \
-	  echo "FAIL: Package missing sysroot/bin/qjs$(EXE) executable"; exit 1; \
-	fi; \
-	if ! tar tzf "$$TARBALL" | grep -q "sysroot/bin/qjsc$(EXE)"; then \
-	  echo "FAIL: Package missing sysroot/bin/qjsc$(EXE) executable"; exit 1; \
-	fi; \
-	echo "  PASS: QuickJS package verification"
-
-# ===========================================================================
 # Clean
 # ===========================================================================
 
 clean:
 	-$(MAKE) CONFIG_NANVIX=y clean 2>/dev/null || true
 	rm -f qjs.elf qjsc.elf run-test262.elf
-	rm -rf dist/
+	rm -rf $(OUT_DIR) dist/
 
-.PHONY: all clean test test-functional package verify-package
+.PHONY: all install _upstream-build clean test test-functional
