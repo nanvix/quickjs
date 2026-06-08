@@ -27,6 +27,15 @@ from nanvix_zutil import (
     run,
 )
 from nanvix_zutil.helpers import InitRdArgs
+from nanvix_zutil.paths import (
+    bin_out,
+    dist_dir,
+    include_out,
+    lib_out,
+    nanvix_root,
+    out_dir,
+    repo_root,
+)
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -71,19 +80,36 @@ _STANDALONE_RAMFS_SUPPORT_FILES = [
 class QuickJSBuild(ZScript):
     """Build script for nanvix/quickjs."""
 
-    # Build artifacts produced by `make all` that must be copied back from
-    # the container-local build directory to the host workspace on Windows
-    # (where `build_windows_run_cmd` uses tar-based source copying).
+    # Artifacts produced inside the Docker container that must be copied
+    # back to the host workspace on Windows tar-copy mode (where the build
+    # runs in a container-local directory instead of the mounted
+    # workspace).  Two categories:
+    #   * legacy repo-root paths needed at runtime (e.g. make_initrd
+    #     resolves apps via repo_root()/app);
+    #   * install-staged paths under .nanvix/out/release/{bin,lib,include}
+    #     required by `./z release` (see _staged_output_files()).
     _BUILD_OUTPUTS = [
         "qjs.elf",
         "qjsc.elf",
         "run-test262.elf",
-        "libquickjs.a",
     ]
+
+    def _staged_output_files(self) -> list[str]:
+        """Return install-staged artifact paths (relative to repo_root())
+        so Windows tar-copy mode also copies them back to the host.
+        """
+        root = repo_root()
+        return [
+            str((bin_out() / "qjs.elf").relative_to(root)),
+            str((bin_out() / "qjsc.elf").relative_to(root)),
+            str((lib_out() / "quickjs" / "libquickjs.a").relative_to(root)),
+            str((include_out() / "quickjs" / "quickjs.h").relative_to(root)),
+            str((include_out() / "quickjs" / "quickjs-libc.h").relative_to(root)),
+        ]
 
     def docker_config(self, image: str) -> DockerConfig:
         cfg = super().docker_config(image)
-        cfg.output_files = list(self._BUILD_OUTPUTS)
+        cfg.output_files = list(self._BUILD_OUTPUTS) + self._staged_output_files()
         return cfg
 
     def _make_args(self, *targets: str) -> list[str]:
@@ -100,6 +126,9 @@ class QuickJSBuild(ZScript):
             self.docker.translate_path(Path(sysroot)) if self.docker else Path(sysroot)
         )
 
+        def translate(p: Path):
+            return self.docker.translate_path(p) if self.docker else p
+
         args = [
             "make",
             "-f",
@@ -113,6 +142,12 @@ class QuickJSBuild(ZScript):
                 f"{_MAKE_VAR_PLATFORM}={self.config.machine}",
                 f"{_MAKE_VAR_PROCESS_MODE}={self.config.deployment_mode}",
                 f"{_MAKE_VAR_MEMORY_SIZE}={self.config.memory_size}",
+                f"NANVIX_ROOT={translate(nanvix_root())}",
+                f"OUT_DIR={translate(out_dir())}",
+                f"DIST_DIR={translate(dist_dir())}",
+                f"LIB_OUT={translate(lib_out())}",
+                f"INCLUDE_OUT={translate(include_out())}",
+                f"BIN_OUT={translate(bin_out())}",
             ]
         )
 
@@ -136,7 +171,7 @@ class QuickJSBuild(ZScript):
 
     def build(self) -> None:
         """Cross-compile qjs.elf, qjsc.elf, and libquickjs.a for Nanvix."""
-        run(*self._make_args("all"), cwd=self.repo_root, docker=self.docker)
+        run(*self._make_args("all"), cwd=repo_root(), docker=self.docker)
 
     def test(self) -> None:
         """Run the QuickJS functional test suite.
@@ -155,7 +190,7 @@ class QuickJSBuild(ZScript):
             targets = self.targets if self.targets else ["test"]
             run(
                 *self._make_args(*targets),
-                cwd=self.repo_root,
+                cwd=repo_root(),
             )
 
     # ------------------------------------------------------------------
@@ -177,7 +212,7 @@ class QuickJSBuild(ZScript):
         Creates an initrd bundling qjs.elf with system daemons via
         make_initrd, and a ramfs providing test JS files.
         """
-        qjs_elf = self.repo_root / "qjs.elf"
+        qjs_elf = repo_root() / "qjs.elf"
         if not qjs_elf.is_file():
             log.fatal(
                 "qjs.elf not found.",
@@ -210,7 +245,7 @@ class QuickJSBuild(ZScript):
 
             # Copy test files + support files into the ramfs.
             for tf in _FUNCTIONAL_TEST_FILES + _STANDALONE_RAMFS_SUPPORT_FILES:
-                shutil.copy2(self.repo_root / tf, ramfs_tests / Path(tf).name)
+                shutil.copy2(repo_root() / tf, ramfs_tests / Path(tf).name)
 
             run(
                 str(mkramfs),
@@ -227,7 +262,9 @@ class QuickJSBuild(ZScript):
                     app_args.append("--std")
                 app_args.append(guest_path)
 
-                initrd = make_initrd(self, "qjs.elf", InitRdArgs(app_args=app_args))
+                initrd = make_initrd(
+                    self, "qjs.elf", test=True, args=InitRdArgs(app_args=app_args)
+                )
                 try:
                     run(
                         str(nanvixd),
@@ -251,7 +288,7 @@ class QuickJSBuild(ZScript):
         Uses nanvixd directly with the qjs.elf path and a ramfs
         providing /tmp for any test I/O.
         """
-        qjs_elf = self.repo_root / "qjs.elf"
+        qjs_elf = repo_root() / "qjs.elf"
         if not qjs_elf.is_file():
             log.fatal(
                 "qjs.elf not found.",
@@ -297,7 +334,7 @@ class QuickJSBuild(ZScript):
             )
 
             for tf in all_tests:
-                test_path = str((self.repo_root / tf).resolve())
+                test_path = str((repo_root() / tf).resolve())
                 std_flag = tf in std_files
                 cmd: list[str] = [
                     str(nanvixd),
@@ -315,18 +352,6 @@ class QuickJSBuild(ZScript):
 
         print("  PASS: QuickJS functional tests")
 
-    def release(self) -> None:
-        """Package the QuickJS release tarball and verify it."""
-        for artifact in ("qjs.elf", "qjsc.elf", "libquickjs.a"):
-            if not (self.repo_root / artifact).is_file():
-                log.fatal(
-                    f"{artifact} not found.",
-                    code=EXIT_MISSING_DEP,
-                    hint="Run `./z build` first.",
-                )
-        run(*self._make_args("package"), cwd=self.repo_root)
-        run(*self._make_args("verify-package"), cwd=self.repo_root)
-
     def clean(self) -> None:
         """Remove build artifacts."""
         run(
@@ -334,7 +359,7 @@ class QuickJSBuild(ZScript):
             "-f",
             "Makefile.nanvix",
             "clean",
-            cwd=self.repo_root,
+            cwd=repo_root(),
         )
 
 
