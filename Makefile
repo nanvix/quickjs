@@ -146,8 +146,15 @@ ifdef CONFIG_NANVIX
     CC := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-gcc
     AR := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-ar
     # Paths inside Docker container
-    NANVIX_LDFLAGS := -T$(DOCKER_SYSROOT_PATH)/lib/user.ld -static -Wl,-z,noexecstack
+    # Since Nanvix 0.16.19, _start lives in libnvx_crt0.a and must be linked
+    # first so its strong _start overrides the toolchain's weak no-op stub
+    # (otherwise the guest never reaches main and hangs). Probe the host
+    # sysroot (mounted at DOCKER_SYSROOT_PATH) so this is a no-op on older
+    # releases; allow-multiple-definition resolves kcall objects shared with
+    # libposix.a.
+    NANVIX_LDFLAGS := -T$(DOCKER_SYSROOT_PATH)/lib/user.ld -static -Wl,-z,noexecstack -Wl,--allow-multiple-definition
     NANVIX_LIBS := -Wl,--start-group
+    NANVIX_LIBS += $(if $(wildcard $(NANVIX_HOME)/lib/libnvx_crt0.a),$(DOCKER_SYSROOT_PATH)/lib/libnvx_crt0.a)
     NANVIX_LIBS += $(DOCKER_SYSROOT_PATH)/lib/libposix.a
     NANVIX_LIBS += $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libc.a
     NANVIX_LIBS += $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libm.a
@@ -159,8 +166,9 @@ ifdef CONFIG_NANVIX
     # Nanvix-specific linker flags and libraries
     # Use -Wl,--start-group/-Wl,--end-group to resolve circular dependencies
     # between libposix.a and libc.a (libposix provides malloc/free, libc uses them)
-    NANVIX_LDFLAGS := -T$(NANVIX_HOME)/lib/user.ld -static -Wl,-z,noexecstack
+    NANVIX_LDFLAGS := -T$(NANVIX_HOME)/lib/user.ld -static -Wl,-z,noexecstack -Wl,--allow-multiple-definition
     NANVIX_LIBS := -Wl,--start-group
+    NANVIX_LIBS += $(wildcard $(NANVIX_HOME)/lib/libnvx_crt0.a)
     NANVIX_LIBS += $(NANVIX_HOME)/lib/libposix.a
     NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libc.a
     NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libm.a
