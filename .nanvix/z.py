@@ -35,6 +35,7 @@ from nanvix_zutil.paths import (
     nanvix_root,
     out_dir,
     repo_root,
+    test_out,
 )
 
 IS_WINDOWS = sys.platform == "win32"
@@ -172,6 +173,10 @@ class QuickJSBuild(ZScript):
     def build(self) -> None:
         """Cross-compile qjs.elf, qjsc.elf, and libquickjs.a for Nanvix."""
         run(*self._make_args("all"), cwd=repo_root(), docker=self.docker)
+        # Stage into test_out() for the windows-test upload glob
+        # `.nanvix/out/test/**/*.{elf,so}` (workflows v2.3.0).
+        test_out().mkdir(parents=True, exist_ok=True)
+        shutil.copy2(repo_root() / "qjs.elf", test_out() / "qjs.elf")
 
     def test(self) -> None:
         """Run the QuickJS functional test suite.
@@ -213,12 +218,25 @@ class QuickJSBuild(ZScript):
         make_initrd, and a ramfs providing test JS files.
         """
         qjs_elf = repo_root() / "qjs.elf"
-        if not qjs_elf.is_file():
+        # Prefer test_out() (windows-test overlay); stage to repo_root
+        # for make_initrd (zutils v0.13.0 hardcodes repo_root() / app).
+        # `staged_created` gates cleanup so a dev's prior build is safe.
+        qjs_elf_src: Path | None = None
+        for candidate in (test_out() / "qjs.elf", qjs_elf):
+            if candidate.is_file():
+                qjs_elf_src = candidate
+                break
+        if qjs_elf_src is None:
             log.fatal(
                 "qjs.elf not found.",
                 code=EXIT_MISSING_DEP,
                 hint="Run `./z build` first.",
             )
+        staged_created = False
+        if qjs_elf_src.resolve() != qjs_elf.resolve():
+            preexisted = qjs_elf.exists()
+            shutil.copy2(qjs_elf_src, qjs_elf)
+            staged_created = not preexisted
 
         sysroot = self._sysroot_path()
         ext = ".exe" if IS_WINDOWS else ".elf"
@@ -279,6 +297,9 @@ class QuickJSBuild(ZScript):
                 finally:
                     if initrd.exists():
                         initrd.unlink()
+
+        if staged_created:
+            qjs_elf.unlink(missing_ok=True)
 
         print("  PASS: QuickJS functional tests")
 
