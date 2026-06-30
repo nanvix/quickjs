@@ -85,8 +85,7 @@ class QuickJSBuild(ZScript):
     # back to the host workspace on Windows tar-copy mode (where the build
     # runs in a container-local directory instead of the mounted
     # workspace).  Two categories:
-    #   * legacy repo-root paths needed at runtime (e.g. make_initrd
-    #     resolves apps via repo_root()/app);
+    #   * repo-root ELFs emitted by Makefile.nanvix;
     #   * install-staged paths under .nanvix/out/release/{bin,lib,include}
     #     required by `./z release` (see _staged_output_files()).
     _BUILD_OUTPUTS = [
@@ -217,12 +216,10 @@ class QuickJSBuild(ZScript):
         Creates an initrd bundling qjs.elf with system daemons via
         make_initrd, and a ramfs providing test JS files.
         """
-        qjs_elf = repo_root() / "qjs.elf"
-        # Prefer test_out() (windows-test overlay); stage to repo_root
-        # for make_initrd (zutils v0.13.0 hardcodes repo_root() / app).
-        # `staged_created` gates cleanup so a dev's prior build is safe.
+        # Prefer test_out() (windows-test overlay) over the Makefile's
+        # repo-root output.
         qjs_elf_src: Path | None = None
-        for candidate in (test_out() / "qjs.elf", qjs_elf):
+        for candidate in (test_out() / "qjs.elf", repo_root() / "qjs.elf"):
             if candidate.is_file():
                 qjs_elf_src = candidate
                 break
@@ -232,11 +229,6 @@ class QuickJSBuild(ZScript):
                 code=EXIT_MISSING_DEP,
                 hint="Run `./z build` first.",
             )
-        staged_created = False
-        if qjs_elf_src.resolve() != qjs_elf.resolve():
-            preexisted = qjs_elf.exists()
-            shutil.copy2(qjs_elf_src, qjs_elf)
-            staged_created = not preexisted
 
         sysroot = self._sysroot_path()
         ext = ".exe" if IS_WINDOWS else ".elf"
@@ -281,7 +273,10 @@ class QuickJSBuild(ZScript):
                 app_args.append(guest_path)
 
                 initrd = make_initrd(
-                    self, "qjs.elf", test=True, args=InitRdArgs(app_args=app_args)
+                    self,
+                    qjs_elf_src,
+                    test_out(),
+                    args=InitRdArgs(app_args=app_args),
                 )
                 try:
                     run(
@@ -297,9 +292,6 @@ class QuickJSBuild(ZScript):
                 finally:
                     if initrd.exists():
                         initrd.unlink()
-
-        if staged_created:
-            qjs_elf.unlink(missing_ok=True)
 
         print("  PASS: QuickJS functional tests")
 
