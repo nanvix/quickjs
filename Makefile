@@ -44,8 +44,8 @@ endif
 # Nanvix cross-compilation (set CONFIG_NANVIX=y to enable)
 #CONFIG_NANVIX=y
 # Nanvix Docker image for cross-compilation (used as fallback if native toolchain not found).
-# Default uses the latest published toolchain tag unless overridden by the environment.
-NANVIX_DOCKER_IMAGE ?= ghcr.io/nanvix/toolchain-quickjs:latest
+# The Nanvix LLVM toolchain image (clang/llvm-ar, target i686-unknown-nanvix) unless overridden.
+NANVIX_DOCKER_IMAGE ?= ghcr.io/nanvix/llvm-project:ca7933e47d3a
 
 # installation directory
 PREFIX?=/usr/local
@@ -94,7 +94,7 @@ ifdef CONFIG_NANVIX
 
   # Check if Docker is explicitly requested or native toolchain is not available
   ifndef CONFIG_NANVIX_DOCKER
-    ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc),)
+    ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/clang),)
       # Native toolchain not found, check for Docker
       DOCKER_AVAILABLE := $(shell command -v docker 2>/dev/null)
       ifdef DOCKER_AVAILABLE
@@ -128,52 +128,50 @@ ifdef CONFIG_NANVIX
   CONFIG_M32=y
   EXE=.elf
 
+  # Nanvix LLVM target. clang targets i686-unknown-nanvix natively and uses the
+  # toolchain's bundled sysroot (/opt/nanvix) for system headers and, at link
+  # time, automatically pulls in the startup object (crt0.o), the C/math
+  # libraries, and the compiler-rt builtins. The i686-unknown-nanvix triple
+  # defines __nanvix__, so this port's Nanvix workarounds activate without an
+  # explicit -D. The LLVM toolchain (clang/llvm-ar) ships in the Docker image.
+  NANVIX_TARGET := i686-unknown-nanvix
+
   ifdef CONFIG_NANVIX_DOCKER
-    # Docker-based cross-compilation
-    # Commands will be wrapped with docker run
+    # Docker-based cross-compilation: wrap each toolchain command in docker run.
+    # The toolchain image is self-contained (compiler + sysroot at /opt/nanvix),
+    # so only the workspace needs mounting.
     DOCKER_TOOLCHAIN_PATH := /opt/nanvix
-    DOCKER_SYSROOT_PATH := /mnt/sysroot
     DOCKER_WORKSPACE_PATH := /mnt/workspace
     DOCKER_UID := $(shell id -u)
     DOCKER_GID := $(shell id -g)
     DOCKER_RUN := docker run --rm --user $(DOCKER_UID):$(DOCKER_GID) \
       -v $(CURDIR):$(DOCKER_WORKSPACE_PATH) \
-      -v $(NANVIX_HOME):$(DOCKER_SYSROOT_PATH):ro \
       -w $(DOCKER_WORKSPACE_PATH) \
       -e HOME=/tmp \
       $(NANVIX_DOCKER_IMAGE)
-    # Override CC and AR to run inside Docker
-    CC := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-gcc
-    AR := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/i686-nanvix-ar
-    # Paths inside Docker container
-    # Since Nanvix 0.16.19, _start lives in libnvx_crt0.a and must be linked
-    # first so its strong _start overrides the toolchain's weak no-op stub
-    # (otherwise the guest never reaches main and hangs). Probe the host
-    # sysroot (mounted at DOCKER_SYSROOT_PATH) so this is a no-op on older
-    # releases; allow-multiple-definition resolves kcall objects shared with
-    # libposix.a.
-    NANVIX_LDFLAGS := -T$(DOCKER_SYSROOT_PATH)/lib/user.ld -static -Wl,-z,noexecstack -Wl,--allow-multiple-definition
-    NANVIX_LIBS := -Wl,--start-group
-    NANVIX_LIBS += $(if $(wildcard $(NANVIX_HOME)/lib/libnvx_crt0.a),$(DOCKER_SYSROOT_PATH)/lib/libnvx_crt0.a)
-    NANVIX_LIBS += $(DOCKER_SYSROOT_PATH)/lib/libposix.a
-    NANVIX_LIBS += $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libc.a
-    NANVIX_LIBS += $(DOCKER_TOOLCHAIN_PATH)/i686-nanvix/lib/libm.a
-    NANVIX_LIBS += -Wl,--end-group
+    CC := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/clang
+    AR := $(DOCKER_RUN) $(DOCKER_TOOLCHAIN_PATH)/bin/llvm-ar
+    NANVIX_TOOLCHAIN_LIB := $(DOCKER_TOOLCHAIN_PATH)/lib
   else
-    # Native toolchain cross-compilation
-    CC := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc
-    AR := $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-ar
-    # Nanvix-specific linker flags and libraries
-    # Use -Wl,--start-group/-Wl,--end-group to resolve circular dependencies
-    # between libposix.a and libc.a (libposix provides malloc/free, libc uses them)
-    NANVIX_LDFLAGS := -T$(NANVIX_HOME)/lib/user.ld -static -Wl,-z,noexecstack -Wl,--allow-multiple-definition
-    NANVIX_LIBS := -Wl,--start-group
-    NANVIX_LIBS += $(wildcard $(NANVIX_HOME)/lib/libnvx_crt0.a)
-    NANVIX_LIBS += $(NANVIX_HOME)/lib/libposix.a
-    NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libc.a
-    NANVIX_LIBS += $(NANVIX_TOOLCHAIN)/i686-nanvix/lib/libm.a
-    NANVIX_LIBS += -Wl,--end-group
+    # Native toolchain cross-compilation (LLVM toolchain at NANVIX_TOOLCHAIN).
+    CC := $(NANVIX_TOOLCHAIN)/bin/clang
+    AR := $(NANVIX_TOOLCHAIN)/bin/llvm-ar
+    NANVIX_TOOLCHAIN_LIB := $(NANVIX_TOOLCHAIN)/lib
   endif
+
+  # Compile flags: target the Nanvix ABI. System headers come from the
+  # toolchain's bundled sysroot; no explicit include paths are required.
+  NANVIX_CFLAGS := --target=$(NANVIX_TARGET)
+  CFLAGS += $(NANVIX_CFLAGS)
+
+  # Link flags (clang driver). The driver adds crt0.o + libc + libm +
+  # compiler-rt from the toolchain sysroot automatically; only the
+  # Nanvix-specific bits are supplied explicitly: the guest linker script, the
+  # crt0 entry point (_do_start), and --allow-multiple-definition (crt0.o and
+  # libc.a share some low-level objects, e.g. fork_save_context).
+  NANVIX_LDFLAGS := --target=$(NANVIX_TARGET) -T $(NANVIX_TOOLCHAIN_LIB)/user.ld \
+    -Wl,--entry=_do_start -Wl,--allow-multiple-definition -Wl,-z,noexecstack
+  NANVIX_LIBS :=
 endif
 
 ifdef CONFIG_WIN32

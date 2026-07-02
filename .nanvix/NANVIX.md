@@ -14,6 +14,8 @@ This document describes the port of [QuickJS](https://bellard.org/quickjs/) Java
 | **Base Commit** | `4af5b1e` (master) |
 | **Target Platform** | Nanvix (i686) |
 | **Build System** | GNU Make |
+| **Toolchain** | Nanvix LLVM — `clang` (target `i686-unknown-nanvix`) + `llvm-ar` |
+| **Docker Image** | `ghcr.io/nanvix/llvm-project:ca7933e47d3a` |
 | **Build Orchestration** | [nanvix-zutil](https://github.com/nanvix/zutils) |
 
 **What's included:**
@@ -61,8 +63,8 @@ pip install nanvix-zutil
 ### Manual Build (without nanvix-zutil)
 
 ```bash
-# 1. Pull the Docker image
-docker pull ghcr.io/nanvix/toolchain-quickjs:latest
+# 1. Pull the Docker image (Nanvix LLVM toolchain)
+docker pull ghcr.io/nanvix/llvm-project:ca7933e47d3a
 
 # 2. Download Nanvix sysroot
 curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- nanvix-artifacts
@@ -87,20 +89,21 @@ You need the following components to build QuickJS for Nanvix:
 | Component | Description | Default Location |
 |-----------|-------------|------------------|
 | **nanvix-zutil** | Build orchestration tool | `pip install nanvix-zutil` |
-| **Nanvix Toolchain** | i686-nanvix cross-compiler | `$HOME/toolchain` |
-| **Nanvix Sysroot** | System libraries and linker script | `$HOME/nanvix` |
+| **Nanvix LLVM Toolchain** | `clang`/`llvm-ar` cross-compiler + bundled sysroot | `/opt/nanvix` (in Docker image) |
+| **Nanvix Runtime Sysroot** | `nanvixd.elf` + daemons, used to run tests | `$HOME/nanvix` |
 
 > **Note:** When using nanvix-zutil (`./z setup`), the sysroot is downloaded
 > automatically. The Nanvix version is declared in `.nanvix/nanvix.toml`.
 
 ### Available Platform Configurations
 
+> **Note:** This port supports **only the `standalone` deployment mode.** The
+> multi-process and single-process modes are not supported (QuickJS runs as a
+> single guest without a Linux personality; `os.Worker`/threads are unavailable).
+
 | Platform | Process Mode | Artifact Pattern |
 |----------|--------------|------------------|
-| hyperlight | multi-process | `hyperlight.*multi-process` |
-| hyperlight | single-process | `hyperlight.*single-process` |
-| microvm | single-process | `microvm.*single-process` |
-| microvm | multi-process | `microvm.*multi-process` |
+| hyperlight | standalone | `hyperlight.*standalone` |
 | microvm | standalone | `microvm.*standalone` |
 
 ### Downloading Nanvix
@@ -134,26 +137,30 @@ Windows, which in turn invokes the `nanvix-zutil` CLI. Build logic is defined in
 The Makefile supports automatic Docker fallback when the native toolchain is not available:
 
 ```bash
-# Pull the Nanvix toolchain Docker image
-docker pull ghcr.io/nanvix/toolchain-quickjs:latest
+# Pull the Nanvix LLVM toolchain Docker image
+docker pull ghcr.io/nanvix/llvm-project:ca7933e47d3a
 
 # Build (Docker is used automatically if native toolchain is not found)
 make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix/sysroot-debug
 ```
 
-> **Note:** The sysroot (`NANVIX_HOME`) must contain `lib/libposix.a` and `lib/user.ld` from a Nanvix build.
+> **Note:** The toolchain image is self-contained: `clang` targets
+> `i686-unknown-nanvix` and resolves system headers, the startup object
+> (`crt0.o`), the C/math libraries, and compiler-rt from its bundled sysroot at
+> `/opt/nanvix`. `NANVIX_HOME` is only the **runtime** sysroot (provides
+> `bin/nanvixd.elf` and daemons) used by `test`.
 
 **Docker Fallback Behavior:**
-- If `NANVIX_TOOLCHAIN` points to a valid toolchain, it uses the native compiler
+- If `NANVIX_TOOLCHAIN` points to a valid toolchain (containing `bin/clang`), it uses the native compiler
 - If the native toolchain is not found, it automatically uses Docker if available
 - Use `CONFIG_NANVIX_DOCKER=y` to force Docker usage even when native toolchain exists
-- Use `NANVIX_DOCKER_IMAGE` to specify a custom Docker image (default: `ghcr.io/nanvix/toolchain-quickjs:latest`)
+- Use `NANVIX_DOCKER_IMAGE` to specify a custom Docker image (default: `ghcr.io/nanvix/llvm-project:ca7933e47d3a`)
 
 ### Using Native Toolchain
 
 ```bash
-export NANVIX_TOOLCHAIN=/path/to/toolchain  # Contains: bin/i686-nanvix-gcc
-export NANVIX_HOME=/path/to/nanvix          # Contains: lib/user.ld, lib/libposix.a
+export NANVIX_TOOLCHAIN=/path/to/toolchain  # Contains: bin/clang, bin/llvm-ar, lib/user.ld, and the sysroot
+export NANVIX_HOME=/path/to/nanvix          # Runtime sysroot: contains bin/nanvixd.elf (used by `test`)
 make CONFIG_NANVIX=y all
 ```
 
@@ -196,24 +203,32 @@ make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix microbench
 
 ### Running Individual Tests
 
-To run a single test file manually:
+The functional suite runs in **standalone** mode: `./z test` bundles `qjs.elf`
+with the system daemons (`procd`/`memd`/`vfsd`) into an initrd and runs it under
+`nanvixd` with a ramfs containing the test scripts. To iterate on a single test,
+edit the `_FUNCTIONAL_TEST_FILES` list in `.nanvix/z.py` and re-run:
 
 ```bash
-cd "$NANVIX_HOME" && ./bin/nanvixd.elf -- /path/to/qjs.elf /path/to/test.js
+./z test
 ```
 
 ### Available Test Files
+
+The standalone functional suite runs the following (see `_FUNCTIONAL_TEST_FILES`
+in `.nanvix/z.py`):
 
 | Test File | Description |
 |-----------|-------------|
 | `test_closure.js` | Closure functionality tests |
 | `test_language.js` | JavaScript language feature tests |
-| `test_builtin.js` | Built-in object tests |
+| `test_builtin.js` | Built-in object tests (`--std`) |
 | `test_loop.js` | Loop construct tests |
 | `test_bigint.js` | BigInt support tests |
 | `test_cyclic_import.js` | Cyclic module import tests |
-| `test_worker.js` | Worker thread tests |
-| `test_std_nanvix.js` | Nanvix-compatible standard library tests |
+| `test_std_nanvix.js` | Nanvix-compatible standard library tests (`--std`) |
+
+> `tests/test_worker.js` (Worker threads) is **not** run: threads require a
+> multi-process deployment, which this port does not support.
 
 ---
 
@@ -226,12 +241,14 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 | Change | Description |
 |--------|-------------|
 | Cross-compilation | Added `CONFIG_NANVIX=y` option to enable Nanvix build |
+| LLVM toolchain | `clang` (compile + link driver) + `llvm-ar`; image `ghcr.io/nanvix/llvm-project` |
+| Compile flags | `--target=i686-unknown-nanvix` (sysroot headers auto-resolved; `__nanvix__` predefined) |
+| Link flags | clang driver: `--target=i686-unknown-nanvix -T <toolchain>/lib/user.ld -Wl,--entry=_do_start -Wl,--allow-multiple-definition -Wl,-z,noexecstack` |
+| Link libraries | `crt0.o`, `libc.a`, `libm.a`, compiler-rt auto-linked from the toolchain sysroot (POSIX merged into `libc.a`) |
 | New Makefile | Added `Makefile.nanvix` for standardized Nanvix cross-compilation |
 | nanvix-zutil integration | `.nanvix/z.py` ZScript subclass for build orchestration |
 | Package manifest | `.nanvix/nanvix.toml` declares version and Nanvix dependency |
 | Thin wrappers | `z.sh`, `z.ps1`, `z` entry points delegate to nanvix-zutil |
-| AR tool | Fixed Makefile to conditionally set AR for Nanvix builds |
-| Linker flags | Added Nanvix-specific flags (`-T user.ld -static`) |
 | Shared libraries | Disabled (not supported on Nanvix) |
 | Test target | Modified to run via `nanvixd.elf` |
 | Package targets | `package` and `verify-package` for release tarball creation |
@@ -275,6 +292,8 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 
 | Limitation | Impact |
 |------------|--------|
+| **Standalone only** | Only the `standalone` deployment mode is supported (no multi-process / single-process) |
+| **No threads / workers** | `os.Worker` is unavailable (threads require a multi-process deployment) |
 | **No timezone support** | `getTimezoneOffset()` always returns 0 |
 | **No shared libraries** | Cannot use `.so` dynamic modules |
 | **Limited `os` module** | `os.exec()`, signals, and pipes unavailable |
@@ -298,15 +317,11 @@ invokes the reusable Nanvix CI workflow at
 
 ### Build Matrix
 
-The CI runs across platform/process-mode/memory configurations:
+The CI runs the `standalone` deployment mode across platform/memory
+configurations (multi-process and single-process are not supported):
 
 | Platform | Process Mode | Runner |
 |----------|--------------|--------|
-| hyperlight | multi-process | `ubuntu-latest` (container) |
-| hyperlight | single-process | `ubuntu-latest` (container) |
-| hyperlight | standalone | `ubuntu-latest` (container) |
-| microvm | multi-process | `ubuntu-latest` (container) |
-| microvm | single-process | `ubuntu-latest` (container) |
 | microvm | standalone | `ubuntu-latest` (container) |
 
 All configurations run in parallel with `fail-fast: false`.

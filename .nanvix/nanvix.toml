@@ -1,10 +1,10 @@
 [package]
 name = "quickjs"
 version = "2025-09-13"
-nanvix-version = "0.17.49"
+nanvix-version = "0.18.22"
 
 [builds]
 [builds.matrix]
 platforms = ["hyperlight", "microvm"]
-modes = ["multi-process", "single-process", "standalone"]
+modes = ["standalone"]
 memory = ["128mb", "256mb"]
