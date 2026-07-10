@@ -579,7 +579,7 @@ endif
 else
 # Nanvix test target: run tests using nanvixd.elf (must run from NANVIX_HOME)
 # test_std_nanvix.js is a Nanvix-compatible version with unsupported tests commented out
-ifeq ($(PROCESS_MODE),standalone)
+# Only the standalone deployment mode is supported.
 test: qjs$(EXE)
 	@rm -rf /tmp/nanvix-ramfs && mkdir -p /tmp/nanvix-ramfs/tests /tmp/nanvix-ramfs/examples
 	@cp $(abspath qjs$(EXE)) /tmp/nanvix-ramfs/
@@ -606,21 +606,6 @@ ifdef CONFIG_SHARED_LIBS
 	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -bin-dir ./bin -ramfs /tmp/rootfs.img -- ./qjs$(EXE) ./examples/test_point.js
 endif
 	@rm -rf /tmp/nanvix-ramfs /tmp/rootfs.img
-else
-test: qjs$(EXE)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_closure.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_language.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/test_builtin.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_loop.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_bigint.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_cyclic_import.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/test_worker.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) --std $(abspath tests/test_std_nanvix.js)
-ifdef CONFIG_SHARED_LIBS
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath tests/test_bjson.js)
-	cd "$(NANVIX_HOME)" && ./bin/nanvixd.elf -- $(abspath qjs$(EXE)) $(abspath examples/test_point.js)
-endif
-endif
 endif
 
 stats: qjs$(EXE)

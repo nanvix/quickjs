@@ -4,8 +4,10 @@
 # Licensed under the MIT License.
 #
 # Usage (invoked via .nanvix/z.py):
-#   make -f Makefile.nanvix PLATFORM=<p> PROCESS_MODE=<m> MEMORY_SIZE=<s> \
+#   make -f Makefile.nanvix PLATFORM=<p> MEMORY_SIZE=<s> \
 #     NANVIX_HOME=<sysroot> NANVIX_TOOLCHAIN=<toolchain> [target]
+#
+# Only the standalone deployment mode is supported.
 #
 # This Makefile is a thin wrapper around the upstream QuickJS Makefile (which
 # is itself Nanvix-aware). Cross-compilation always runs inside the
@@ -19,17 +21,16 @@
 # Some assumptions:
 # 1. This makefile is expected to be invoked via z.py.
 # 2. Build goals (all, install) require the cross-toolchain at
-#    $(NANVIX_TOOLCHAIN) and the LIB_OUT/INCLUDE_OUT/BIN_OUT paths; other
-#    goals (test-*, clean) are pure host-side.
-# 3. Test and release targets assume build artifacts already exist; they
-#    fail fast with a hint if they don't. The expected workflow is
-#    `./z build` before `./z test` or `./z release`.
+#    $(NANVIX_TOOLCHAIN) and the LIB_OUT/INCLUDE_OUT/BIN_OUT paths; the
+#    clean goal is pure host-side.
+# 3. Testing is handled by .nanvix/z.py (standalone tests require an initrd
+#    built via make_initrd), so this Makefile exposes no test targets. The
+#    expected workflow is `./z build` before `./z test`.
 
 .DEFAULT_GOAL=all
 EXE = .elf
 
-PLATFORM ?= hyperlight
-PROCESS_MODE ?= multi-process
+PLATFORM ?= microvm
 MEMORY_SIZE ?= 128mb
 
 _NANVIX_DOCKER_BUILD_GOALS := all install
@@ -37,7 +38,6 @@ _NANVIX_GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
 
 # Ensure required variables are defined.
 _REQUIRED := PLATFORM \
-    PROCESS_MODE \
     MEMORY_SIZE \
     NANVIX_HOME \
     NANVIX_TOOLCHAIN \
@@ -52,8 +52,6 @@ ifneq ($(filter-out clean,$(_NANVIX_GOALS)),)
     $(if $($v),,$(error Required variable $v not set))\
   )
 endif
-
-SYSROOT_PATH := $(abspath $(NANVIX_HOME))
 
 # Artifacts staged by `install` into the release/test output tree so that
 # `./z release` (which packages release_dir()) can find them.  Headers
@@ -106,49 +104,6 @@ install: _upstream-build
 	-cp -f libquickjs.lto.a    $(LIB_OUT)/quickjs/ 2>/dev/null || true
 
 # ===========================================================================
-# Test Targets
-# ===========================================================================
-
-_FUNCTIONAL_TEST_FILES := \
-  tests/test_closure.js \
-  tests/test_language.js \
-  tests/test_builtin.js \
-  tests/test_loop.js \
-  tests/test_bigint.js \
-  tests/test_cyclic_import.js \
-  tests/test_worker.js \
-  tests/test_std_nanvix.js
-
-test-functional: $(_FUNCTIONAL_TEST_FILES)
-	@echo "=== QuickJS functional tests ==="
-ifeq ($(PROCESS_MODE),standalone)
-	@echo "  FAIL: Standalone functional tests are not handled by this Makefile."
-	@echo "         Run './z test test-functional' instead (handled in z.py)."
-	@exit 1
-endif
-	@echo "  Running tests via nanvixd.elf..."
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) $(abspath tests/test_closure.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) $(abspath tests/test_language.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) --std $(abspath tests/test_builtin.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) $(abspath tests/test_loop.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) $(abspath tests/test_bigint.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) $(abspath tests/test_cyclic_import.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) --std $(abspath tests/test_worker.js)
-	cd "$(SYSROOT_PATH)" && timeout --foreground 120 ./bin/nanvixd.elf -- \
-	  $(abspath qjs$(EXE)) --std $(abspath tests/test_std_nanvix.js)
-	@echo "  PASS: QuickJS functional tests"
-
-test: test-functional
-	@echo "=== All QuickJS tests PASSED ==="
-
-# ===========================================================================
 # Clean
 # ===========================================================================
 
@@ -157,4 +112,4 @@ clean:
 	rm -f qjs.elf qjsc.elf run-test262.elf
 	rm -rf $(OUT_DIR) dist/
 
-.PHONY: all install _upstream-build clean test test-functional
+.PHONY: all install _upstream-build clean

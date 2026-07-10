@@ -97,10 +97,6 @@ You need the following components to build QuickJS for Nanvix:
 
 | Platform | Process Mode | Artifact Pattern |
 |----------|--------------|------------------|
-| hyperlight | multi-process | `hyperlight.*multi-process` |
-| hyperlight | single-process | `hyperlight.*single-process` |
-| microvm | single-process | `microvm.*single-process` |
-| microvm | multi-process | `microvm.*multi-process` |
 | microvm | standalone | `microvm.*standalone` |
 
 ### Downloading Nanvix
@@ -179,9 +175,6 @@ After a successful build, you will have:
 ```bash
 # Using nanvix-zutil
 ./z test
-
-# Or directly via Make
-make -f Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
 
 # Or via the original Makefile
 make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
@@ -298,15 +291,11 @@ invokes the reusable Nanvix CI workflow at
 
 ### Build Matrix
 
-The CI runs across platform/process-mode/memory configurations:
+The CI builds and tests the standalone deployment mode across platform configurations:
 
 | Platform | Process Mode | Runner |
 |----------|--------------|--------|
-| hyperlight | multi-process | `ubuntu-latest` (container) |
-| hyperlight | single-process | `ubuntu-latest` (container) |
 | hyperlight | standalone | `ubuntu-latest` (container) |
-| microvm | multi-process | `ubuntu-latest` (container) |
-| microvm | single-process | `ubuntu-latest` (container) |
 | microvm | standalone | `ubuntu-latest` (container) |
 
 All configurations run in parallel with `fail-fast: false`.

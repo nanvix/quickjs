@@ -30,6 +30,7 @@ jobs:
     with:
       docker-image: "ghcr.io/nanvix/toolchain-quickjs@sha256:e6fc5d3d4ed338c1416c08dbe9d8ac1353f696046716774bcc3ac6d41d2375ad" # yamllint disable-line rule:line-length
       platforms: '["microvm"]'
+      process-modes: '["standalone"]'
       memory-sizes: '["128mb","256mb"]'
       windows-matrix-exclude: '[]'
       skip-full-test-modes: '[]'
@@ -45,6 +46,7 @@ jobs:
     with:
       docker-image: "ghcr.io/nanvix/toolchain-quickjs@sha256:e6fc5d3d4ed338c1416c08dbe9d8ac1353f696046716774bcc3ac6d41d2375ad" # yamllint disable-line rule:line-length
       platforms: '["microvm"]'
+      process-modes: '["standalone"]'
       memory-sizes: '["128mb","256mb"]'
       windows-matrix-exclude: '[]'
       skip-full-test-modes: '[]'
