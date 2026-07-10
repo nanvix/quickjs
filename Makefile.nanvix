@@ -30,7 +30,7 @@
 .DEFAULT_GOAL=all
 EXE = .elf
 
-PLATFORM ?= hyperlight
+PLATFORM ?= microvm
 MEMORY_SIZE ?= 128mb
 
 _NANVIX_DOCKER_BUILD_GOALS := all install
