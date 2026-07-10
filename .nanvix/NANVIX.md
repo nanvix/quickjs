@@ -97,10 +97,6 @@ You need the following components to build QuickJS for Nanvix:
 
 | Platform | Process Mode | Artifact Pattern |
 |----------|--------------|------------------|
-| hyperlight | multi-process | `hyperlight.*multi-process` |
-| hyperlight | single-process | `hyperlight.*single-process` |
-| microvm | single-process | `microvm.*single-process` |
-| microvm | multi-process | `microvm.*multi-process` |
 | microvm | standalone | `microvm.*standalone` |
 
 ### Downloading Nanvix
@@ -302,11 +298,7 @@ The CI runs across platform/process-mode/memory configurations:
 
 | Platform | Process Mode | Runner |
 |----------|--------------|--------|
-| hyperlight | multi-process | `ubuntu-latest` (container) |
-| hyperlight | single-process | `ubuntu-latest` (container) |
 | hyperlight | standalone | `ubuntu-latest` (container) |
-| microvm | multi-process | `ubuntu-latest` (container) |
-| microvm | single-process | `ubuntu-latest` (container) |
 | microvm | standalone | `ubuntu-latest` (container) |
 
 All configurations run in parallel with `fail-fast: false`.

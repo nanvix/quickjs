@@ -44,7 +44,6 @@ IS_WINDOWS = sys.platform == "win32"
 _MAKE_VAR_HOME = "NANVIX_HOME"
 _MAKE_VAR_TOOLCHAIN = "NANVIX_TOOLCHAIN"
 _MAKE_VAR_PLATFORM = "PLATFORM"
-_MAKE_VAR_PROCESS_MODE = "PROCESS_MODE"
 _MAKE_VAR_MEMORY_SIZE = "MEMORY_SIZE"
 
 # Timeout for each nanvixd invocation (seconds).
@@ -63,12 +62,6 @@ _FUNCTIONAL_TEST_FILES = [
 # Extra test files that require --std flag.
 _FUNCTIONAL_TEST_FILES_STD = [
     "tests/test_builtin.js",
-]
-
-# Additional test files for non-standalone modes.
-_FUNCTIONAL_EXTRA_NON_STANDALONE = [
-    "tests/test_worker.js",
-    "tests/test_std_nanvix.js",
 ]
 
 # Files that must be copied into the standalone ramfs.
@@ -140,7 +133,6 @@ class QuickJSBuild(ZScript):
         args.extend(
             [
                 f"{_MAKE_VAR_PLATFORM}={self.config.machine}",
-                f"{_MAKE_VAR_PROCESS_MODE}={self.config.deployment_mode}",
                 f"{_MAKE_VAR_MEMORY_SIZE}={self.config.memory_size}",
                 f"NANVIX_ROOT={translate(nanvix_root())}",
                 f"OUT_DIR={translate(out_dir())}",
@@ -180,22 +172,15 @@ class QuickJSBuild(ZScript):
     def test(self) -> None:
         """Run the QuickJS functional test suite.
 
-        Standalone mode is handled in Python via make_initrd so that initrd
-        creation is shared across platforms. Non-standalone mode delegates
-        to the Makefile, which runs the functional tests via nanvixd.
+        Only the standalone deployment mode is supported. Initrd creation is
+        handled in Python via make_initrd so that it is shared across
+        platforms.
         """
         if IS_WINDOWS:
             self._run_tests_windows()
             return
 
-        if self.config.deployment_mode == "standalone":
-            self._run_functional_standalone()
-        else:
-            targets = self.targets if self.targets else ["test"]
-            run(
-                *self._make_args(*targets),
-                cwd=repo_root(),
-            )
+        self._run_functional_standalone()
 
     # ------------------------------------------------------------------
     # Windows test implementation
@@ -203,10 +188,7 @@ class QuickJSBuild(ZScript):
 
     def _run_tests_windows(self) -> None:
         """Run QuickJS functional tests natively on Windows."""
-        if self.config.deployment_mode == "standalone":
-            self._run_functional_standalone()
-        else:
-            self._run_functional_non_standalone()
+        self._run_functional_standalone()
 
         print("=== All QuickJS tests PASSED ===")
 
@@ -292,76 +274,6 @@ class QuickJSBuild(ZScript):
                 finally:
                     if initrd.exists():
                         initrd.unlink()
-
-        print("  PASS: QuickJS functional tests")
-
-    def _run_functional_non_standalone(self) -> None:
-        """Run non-standalone functional tests.
-
-        Uses nanvixd directly with the qjs.elf path and a ramfs
-        providing /tmp for any test I/O.
-        """
-        qjs_elf = repo_root() / "qjs.elf"
-        if not qjs_elf.is_file():
-            log.fatal(
-                "qjs.elf not found.",
-                code=EXIT_MISSING_DEP,
-                hint="Run `./z build` first.",
-            )
-
-        sysroot = self._sysroot_path()
-        ext = ".exe" if IS_WINDOWS else ".elf"
-        mkramfs = sysroot / "bin" / f"mkramfs{ext}"
-        nanvixd = sysroot / "bin" / f"nanvixd{ext}"
-
-        for tool in (mkramfs, nanvixd):
-            if not tool.is_file():
-                log.fatal(
-                    f"{tool.name} not found at {tool}",
-                    code=EXIT_MISSING_DEP,
-                    hint="Run `./z setup` first.",
-                )
-
-        all_tests = list(_FUNCTIONAL_TEST_FILES) + list(
-            _FUNCTIONAL_EXTRA_NON_STANDALONE
-        )
-        std_files = set(_FUNCTIONAL_TEST_FILES_STD) | set(
-            _FUNCTIONAL_EXTRA_NON_STANDALONE
-        )
-
-        print("=== QuickJS functional tests ===")
-        print("  Running tests via nanvixd...")
-
-        with tempfile.TemporaryDirectory(prefix="nanvix_quickjs_") as tmpdir:
-            tmpdir_path = Path(tmpdir)
-            ramfs_dir = tmpdir_path / "ramfs"
-            ramfs_dir.mkdir()
-            (ramfs_dir / "tmp").mkdir()
-            ramfs_img = tmpdir_path / "rootfs.img"
-
-            run(
-                str(mkramfs),
-                "-o",
-                str(ramfs_img),
-                str(ramfs_dir),
-            )
-
-            for tf in all_tests:
-                test_path = str((repo_root() / tf).resolve())
-                std_flag = tf in std_files
-                cmd: list[str] = [
-                    str(nanvixd),
-                    "-bin-dir",
-                    str(sysroot / "bin"),
-                    "-ramfs",
-                    str(ramfs_img),
-                    "--",
-                    str(qjs_elf.resolve()),
-                ]
-                if std_flag:
-                    cmd.append("--std")
-                cmd.append(test_path)
-                run(*cmd, timeout=_NANVIXD_TIMEOUT)
 
         print("  PASS: QuickJS functional tests")
 
