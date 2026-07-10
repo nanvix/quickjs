@@ -21,11 +21,11 @@
 # Some assumptions:
 # 1. This makefile is expected to be invoked via z.py.
 # 2. Build goals (all, install) require the cross-toolchain at
-#    $(NANVIX_TOOLCHAIN) and the LIB_OUT/INCLUDE_OUT/BIN_OUT paths; other
-#    goals (test-*, clean) are pure host-side.
-# 3. Test and release targets assume build artifacts already exist; they
-#    fail fast with a hint if they don't. The expected workflow is
-#    `./z build` before `./z test` or `./z release`.
+#    $(NANVIX_TOOLCHAIN) and the LIB_OUT/INCLUDE_OUT/BIN_OUT paths; the
+#    clean goal is pure host-side.
+# 3. Testing is handled by .nanvix/z.py (standalone tests require an initrd
+#    built via make_initrd), so this Makefile exposes no test targets. The
+#    expected workflow is `./z build` before `./z test`.
 
 .DEFAULT_GOAL=all
 EXE = .elf
@@ -104,21 +104,6 @@ install: _upstream-build
 	-cp -f libquickjs.lto.a    $(LIB_OUT)/quickjs/ 2>/dev/null || true
 
 # ===========================================================================
-# Test Targets
-# ===========================================================================
-
-# Functional tests run only in the standalone deployment mode, which requires
-# an initrd built via make_initrd. That flow is handled in .nanvix/z.py, not
-# by this Makefile.
-test-functional:
-	@echo "=== QuickJS functional tests ==="
-	@echo "  Standalone functional tests are handled by z.py, not this Makefile."
-	@echo "  Run './z test' instead."
-	@exit 1
-
-test: test-functional
-
-# ===========================================================================
 # Clean
 # ===========================================================================
 
@@ -127,4 +112,4 @@ clean:
 	rm -f qjs.elf qjsc.elf run-test262.elf
 	rm -rf $(OUT_DIR) dist/
 
-.PHONY: all install _upstream-build clean test test-functional
+.PHONY: all install _upstream-build clean

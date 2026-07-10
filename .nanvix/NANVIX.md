@@ -176,9 +176,6 @@ After a successful build, you will have:
 # Using nanvix-zutil
 ./z test
 
-# Or directly via Make
-make -f Makefile.nanvix CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
-
 # Or via the original Makefile
 make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
 ```
@@ -294,7 +291,7 @@ invokes the reusable Nanvix CI workflow at
 
 ### Build Matrix
 
-The CI runs across platform/process-mode/memory configurations:
+The CI builds and tests the standalone deployment mode across platform configurations:
 
 | Platform | Process Mode | Runner |
 |----------|--------------|--------|
