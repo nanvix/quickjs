@@ -5,7 +5,7 @@
 #
 # Usage (invoked via .nanvix/z.py):
 #   make -f Makefile.nanvix PLATFORM=<p> MEMORY_SIZE=<s> \
-#     NANVIX_HOME=<sysroot> NANVIX_TOOLCHAIN=<toolchain> [target]
+#     NANVIX_TOOLCHAIN=<sdk> [target]
 #
 # Only the standalone deployment mode is supported.
 #
@@ -20,7 +20,7 @@
 
 # Some assumptions:
 # 1. This makefile is expected to be invoked via z.py.
-# 2. Build goals (all, install) require the cross-toolchain at
+# 2. Build goals (all, install) require the Nanvix SDK at
 #    $(NANVIX_TOOLCHAIN) and the LIB_OUT/INCLUDE_OUT/BIN_OUT paths; the
 #    clean goal is pure host-side.
 # 3. Testing is handled by .nanvix/z.py (standalone tests require an initrd
@@ -39,7 +39,6 @@ _NANVIX_GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
 # Ensure required variables are defined.
 _REQUIRED := PLATFORM \
     MEMORY_SIZE \
-    NANVIX_HOME \
     NANVIX_TOOLCHAIN \
     NANVIX_ROOT \
     OUT_DIR \
@@ -72,14 +71,16 @@ ifneq ($(_BUILD),)
     $(error Cannot mix build and non-build targets. Build targets: $(_NANVIX_DOCKER_BUILD_GOALS))
   endif
 
-  ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/i686-nanvix-gcc),)
-    $(error Nanvix toolchain not found at $(NANVIX_TOOLCHAIN))
+  ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/nanvix-sdk.json),)
+    $(error Nanvix SDK not found at $(NANVIX_TOOLCHAIN))
+  endif
+  ifeq ($(wildcard $(NANVIX_TOOLCHAIN)/bin/clang),)
+    $(error Nanvix SDK Clang not found at $(NANVIX_TOOLCHAIN)/bin/clang)
   endif
 endif
 
 # Arguments forwarded to the upstream Makefile.
 UPSTREAM_MAKE_ARGS := CONFIG_NANVIX=y \
-  NANVIX_HOME="$(NANVIX_HOME)" \
   NANVIX_TOOLCHAIN="$(NANVIX_TOOLCHAIN)"
 
 # ===========================================================================

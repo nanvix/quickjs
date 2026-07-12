@@ -40,8 +40,13 @@ from nanvix_zutil.paths import (
 
 IS_WINDOWS = sys.platform == "win32"
 
+# Docker image for cross-compiling Nanvix targets.
+NANVIX_DOCKER_IMAGE = (
+    "ghcr.io/nanvix/nanvix-sdk-c-clang"
+    "@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
+)
+
 # Makefile variable names (build-system-specific).
-_MAKE_VAR_HOME = "NANVIX_HOME"
 _MAKE_VAR_TOOLCHAIN = "NANVIX_TOOLCHAIN"
 _MAKE_VAR_PLATFORM = "PLATFORM"
 _MAKE_VAR_MEMORY_SIZE = "MEMORY_SIZE"
@@ -74,6 +79,19 @@ _STANDALONE_RAMFS_SUPPORT_FILES = [
 class QuickJSBuild(ZScript):
     """Build script for nanvix/quickjs."""
 
+    # Build-time headers, libraries, startup objects, and linker scripts come
+    # from the SDK. The downloaded sysroot is used only to run tests.
+    SYSROOT_REQUIRED_FILES = (
+        "bin/nanvixd.elf",
+        "bin/kernel.elf",
+        "bin/mkramfs.elf",
+    )
+    SYSROOT_REQUIRED_FILES_WINDOWS = (
+        "bin/nanvixd.exe",
+        "bin/kernel.elf",
+        "bin/mkramfs.exe",
+    )
+
     # Artifacts produced inside the Docker container that must be copied
     # back to the host workspace on Windows tar-copy mode (where the build
     # runs in a container-local directory instead of the mounted
@@ -105,19 +123,13 @@ class QuickJSBuild(ZScript):
         cfg.output_files = list(self._BUILD_OUTPUTS) + self._staged_output_files()
         return cfg
 
+    def docker_image(self) -> str:
+        """Return the pinned Nanvix SDK image."""
+        return NANVIX_DOCKER_IMAGE
+
     def _make_args(self, *targets: str) -> list[str]:
         """Build the common make argument list."""
-        sysroot = self.config.get(CFG_SYSROOT, "")
-        if not sysroot:
-            log.fatal(
-                f"{CFG_SYSROOT} is not set.",
-                code=EXIT_MISSING_DEP,
-                hint="Run `./z setup` first to download the sysroot.",
-            )
         toolchain_p = str(TOOLCHAIN_CONTAINER_PATH)
-        sysroot_p = (
-            self.docker.translate_path(Path(sysroot)) if self.docker else Path(sysroot)
-        )
 
         def translate(p: Path):
             return self.docker.translate_path(p) if self.docker else p
@@ -126,7 +138,6 @@ class QuickJSBuild(ZScript):
             "make",
             "-f",
             "Makefile.nanvix",
-            f"{_MAKE_VAR_HOME}={sysroot_p}",
             f"{_MAKE_VAR_TOOLCHAIN}={toolchain_p}",
         ]
 

@@ -45,8 +45,9 @@ For experienced users who want to build quickly using nanvix-zutil:
 # 1. Install nanvix-zutil
 pip install nanvix-zutil
 
-# 2. Setup (downloads Nanvix sysroot automatically)
-./z setup
+# 2. Setup (downloads the Nanvix runtime automatically)
+SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
+./z setup --with-docker "$SDK"
 
 # 3. Build
 ./z build
@@ -58,25 +59,20 @@ pip install nanvix-zutil
 ./z release
 ```
 
-### Manual Build (without nanvix-zutil)
+### Manual SDK Build
 
 ```bash
-# 1. Pull the Docker image
-docker pull ghcr.io/nanvix/toolchain-quickjs:latest
-
-# 2. Download Nanvix sysroot
-curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- nanvix-artifacts
-tar -xjf nanvix-artifacts/*microvm*single*.tar.bz2 -C nanvix-artifacts
-export NANVIX_HOME=$(find nanvix-artifacts -maxdepth 2 -type d -name "bin" -exec dirname {} \; | head -1)
-
-# 3. Build (Docker is used automatically if native toolchain is not found)
-make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME"
-
-# 4. Run tests
-make CONFIG_NANVIX=y NANVIX_HOME="$NANVIX_HOME" test
+SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
+docker pull "$SDK"
+docker run --rm --user "$(id -u):$(id -g)" \
+    --volume "$PWD:/workspace" --workdir /workspace "$SDK" \
+    make CONFIG_NANVIX=y NANVIX_TOOLCHAIN=/opt/nanvix
 ```
 
-Continue reading for detailed instructions.
+This builds target objects and links target executables with the SDK Clang
+driver. Native `gcc` from the same image builds only host `qjsc` and generators.
+Use the setup command from [Quick Start](#quick-start), then run `./z test` to
+download the matching runtime and run tests.
 
 ---
 
@@ -87,11 +83,12 @@ You need the following components to build QuickJS for Nanvix:
 | Component | Description | Default Location |
 |-----------|-------------|------------------|
 | **nanvix-zutil** | Build orchestration tool | `pip install nanvix-zutil` |
-| **Nanvix Toolchain** | i686-nanvix cross-compiler | `$HOME/toolchain` |
-| **Nanvix Sysroot** | System libraries and linker script | `$HOME/nanvix` |
+| **Nanvix C SDK** | Clang/LLVM, target libc, startup objects, and linker script | `/opt/nanvix` in the pinned image |
+| **Nanvix Runtime** | Kernel, monitor, daemons, and image tools used by tests | `.nanvix/sysroot` |
 
-> **Note:** When using nanvix-zutil (`./z setup`), the sysroot is downloaded
-> automatically. The Nanvix version is declared in `.nanvix/nanvix.toml`.
+> **Note:** `./z setup` downloads only the runtime. Build-time headers,
+> libraries, startup objects, and linker scripts come from the SDK. The runtime
+> version is declared in `.nanvix/nanvix.toml`.
 
 ### Available Platform Configurations
 
@@ -99,13 +96,22 @@ You need the following components to build QuickJS for Nanvix:
 |----------|--------------|------------------|
 | microvm | standalone | `microvm.*standalone` |
 
-### Downloading Nanvix
+Nanvix v0.20.0 publishes runtime artifacts only for microvm at 256 MiB; it has
+no Hyperlight artifacts and no microvm standalone 128 MiB asset. The manifest
+and active CI workflows therefore intentionally test every existing QuickJS
+test type on microvm at 256 MiB only. Failure to resolve either unavailable
+runtime configuration is a runtime compatibility limitation, not a QuickJS
+port failure.
+
+### Downloading the Nanvix Runtime
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/nanvix/nanvix/refs/heads/dev/scripts/get-nanvix.sh | bash -s -- nanvix-artifacts
 ```
 
-The script downloads all release artifacts. Extract the one matching your target platform (see [Quick Start](#quick-start) for a complete example).
+The script downloads release artifacts. Extract the standalone artifact
+matching the target platform and memory size. `./z setup` performs this step
+automatically for Nanvix runtime 0.20.0.
 
 ---
 
@@ -118,7 +124,8 @@ The script downloads all release artifacts. Extract the one matching your target
 pip install nanvix-zutil
 
 # Setup, build, and test in one go
-./z setup && ./z build && ./z test
+SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
+./z setup --with-docker "$SDK" && ./z build && ./z test
 ```
 
 The `./z` entry point automatically delegates to `z.sh` on Linux/macOS or `z.ps1` on
@@ -127,29 +134,31 @@ Windows, which in turn invokes the `nanvix-zutil` CLI. Build logic is defined in
 
 ### Using Docker
 
-The Makefile supports automatic Docker fallback when the native toolchain is not available:
+The Makefile supports automatic Docker fallback when an installed SDK is not
+available:
 
 ```bash
-# Pull the Nanvix toolchain Docker image
-docker pull ghcr.io/nanvix/toolchain-quickjs:latest
+# Pull the pinned Nanvix SDK v0.20.0-sdk.1
+docker pull ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
 
-# Build (Docker is used automatically if native toolchain is not found)
-make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix/sysroot-debug
+# Build (Docker is used automatically if /opt/nanvix is not installed)
+make CONFIG_NANVIX=y
 ```
 
-> **Note:** The sysroot (`NANVIX_HOME`) must contain `lib/libposix.a` and `lib/user.ld` from a Nanvix build.
+The SDK Clang driver supplies the target sysroot, startup object, libc, libm,
+compiler-rt, and linker script. No runtime libraries are linked from the
+downloaded Nanvix runtime.
 
 **Docker Fallback Behavior:**
-- If `NANVIX_TOOLCHAIN` points to a valid toolchain, it uses the native compiler
-- If the native toolchain is not found, it automatically uses Docker if available
+- If `NANVIX_TOOLCHAIN` points to a valid SDK, it uses the installed SDK
+- If the SDK is not found, it automatically uses Docker if available
 - Use `CONFIG_NANVIX_DOCKER=y` to force Docker usage even when native toolchain exists
-- Use `NANVIX_DOCKER_IMAGE` to specify a custom Docker image (default: `ghcr.io/nanvix/toolchain-quickjs:latest`)
+- `NANVIX_DOCKER_IMAGE` defaults to the digest-pinned SDK shown above
 
-### Using Native Toolchain
+### Using an Installed SDK
 
 ```bash
-export NANVIX_TOOLCHAIN=/path/to/toolchain  # Contains: bin/i686-nanvix-gcc
-export NANVIX_HOME=/path/to/nanvix          # Contains: lib/user.ld, lib/libposix.a
+export NANVIX_TOOLCHAIN=/path/to/nanvix-sdk # Contains: nanvix-sdk.json, bin/clang
 make CONFIG_NANVIX=y all
 ```
 
@@ -176,15 +185,6 @@ After a successful build, you will have:
 # Using nanvix-zutil
 ./z test
 
-# Or via the original Makefile
-make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix test
-```
-
-### Running Microbenchmarks
-
-```bash
-# Via the original Makefile
-make CONFIG_NANVIX=y NANVIX_HOME=/path/to/nanvix microbench
 ```
 
 ### Running Individual Tests
@@ -224,7 +224,8 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 | Package manifest | `.nanvix/nanvix.toml` declares version and Nanvix dependency |
 | Thin wrappers | `z.sh`, `z.ps1`, `z` entry points delegate to nanvix-zutil |
 | AR tool | Fixed Makefile to conditionally set AR for Nanvix builds |
-| Linker flags | Added Nanvix-specific flags (`-T user.ld -static`) |
+| SDK toolchain | Target objects and executable links use Clang/LLVM; host tools use host GCC |
+| Runtime isolation | Downloaded Nanvix artifacts are runtime-only; the SDK owns target libc and linking |
 | Shared libraries | Disabled (not supported on Nanvix) |
 | Test target | Modified to run via `nanvixd.elf` |
 | Package targets | `package` and `verify-package` for release tarball creation |
@@ -278,7 +279,7 @@ The following changes were made on top of commit `4af5b1e` (master branch) to su
 
 The GitHub Actions workflow at `.github/workflows/nanvix-ci.yml` is a thin caller that
 invokes the reusable Nanvix CI workflow at
-`nanvix/workflows/.github/workflows/nanvix-ci.yml@v1.0.0`.
+`nanvix/workflows/.github/workflows/nanvix-ci.yml@v2.5.0`.
 
 ### Trigger Events
 
@@ -295,9 +296,9 @@ The CI builds and tests the standalone deployment mode across platform configura
 
 | Platform | Process Mode | Runner |
 |----------|--------------|--------|
-| hyperlight | standalone | `ubuntu-latest` (container) |
 | microvm | standalone | `ubuntu-latest` (container) |
 
-All configurations run in parallel with `fail-fast: false`.
+CI tests the runtime's 256 MiB memory configuration. All configurations run in
+parallel with `fail-fast: false`.
 
 ---
