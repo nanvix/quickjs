@@ -40,12 +40,6 @@ from nanvix_zutil.paths import (
 
 IS_WINDOWS = sys.platform == "win32"
 
-# Docker image for cross-compiling Nanvix targets.
-NANVIX_DOCKER_IMAGE = (
-    "ghcr.io/nanvix/nanvix-sdk-c-clang"
-    "@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f"
-)
-
 # Makefile variable names (build-system-specific).
 _MAKE_VAR_TOOLCHAIN = "NANVIX_TOOLCHAIN"
 _MAKE_VAR_PLATFORM = "PLATFORM"
@@ -122,10 +116,6 @@ class QuickJSBuild(ZScript):
         cfg = super().docker_config(image)
         cfg.output_files = list(self._BUILD_OUTPUTS) + self._staged_output_files()
         return cfg
-
-    def docker_image(self) -> str:
-        """Return the pinned Nanvix SDK image."""
-        return NANVIX_DOCKER_IMAGE
 
     def _make_args(self, *targets: str) -> list[str]:
         """Build the common make argument list."""

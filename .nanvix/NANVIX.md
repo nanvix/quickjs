@@ -45,9 +45,8 @@ For experienced users who want to build quickly using nanvix-zutil:
 # 1. Install nanvix-zutil
 pip install nanvix-zutil
 
-# 2. Setup (downloads the Nanvix runtime automatically)
-SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
-./z setup --with-docker "$SDK"
+# 2. Setup (uses the manifest SDK and downloads the Nanvix runtime)
+./z setup
 
 # 3. Build
 ./z build
@@ -62,7 +61,7 @@ SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db
 ### Manual SDK Build
 
 ```bash
-SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
+SDK="<immutable SDK reference from .nanvix/nanvix.toml>"
 docker pull "$SDK"
 docker run --rm --user "$(id -u):$(id -g)" \
     --volume "$PWD:/workspace" --workdir /workspace "$SDK" \
@@ -123,9 +122,8 @@ automatically for Nanvix runtime 0.20.0.
 # Install nanvix-zutil
 pip install nanvix-zutil
 
-# Setup, build, and test in one go
-SDK=ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
-./z setup --with-docker "$SDK" && ./z build && ./z test
+# Setup, build, and test in one go using the manifest SDK.
+./z setup && ./z build && ./z test
 ```
 
 The `./z` entry point automatically delegates to `z.sh` on Linux/macOS or `z.ps1` on
@@ -138,8 +136,7 @@ The Makefile supports automatic Docker fallback when an installed SDK is not
 available:
 
 ```bash
-# Pull the pinned Nanvix SDK v0.20.0-sdk.1
-docker pull ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
+# Pull the immutable SDK reference declared in .nanvix/nanvix.toml.
 
 # Build (Docker is used automatically if /opt/nanvix is not installed)
 make CONFIG_NANVIX=y

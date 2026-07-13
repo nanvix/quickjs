@@ -43,9 +43,11 @@ endif
 #CONFIG_COSMO=y
 # Nanvix cross-compilation (set CONFIG_NANVIX=y to enable)
 #CONFIG_NANVIX=y
-# Nanvix SDK image for cross-compilation (used as fallback if a native SDK is
-# not found). Keep this digest in sync with .nanvix/z.py and Nanvix CI.
-NANVIX_DOCKER_IMAGE ?= ghcr.io/nanvix/nanvix-sdk-c-clang@sha256:f61737cb0780e6a2058c6d0bdf8ae5562db18de437173b2bcbbe6973abd3689f
+# Nanvix SDK image for direct-Make Docker fallback, derived from the manifest.
+NANVIX_MANIFEST ?= .nanvix/nanvix.toml
+NANVIX_SDK_IMAGE_NAME = $(shell sed -n 's/^sdk-image = "\(.*\)"/\1/p' $(NANVIX_MANIFEST))
+NANVIX_SDK_IMAGE_DIGEST = $(shell sed -n 's/^sdk-digest = "\(.*\)"/\1/p' $(NANVIX_MANIFEST))
+NANVIX_DOCKER_IMAGE ?= $(NANVIX_SDK_IMAGE_NAME)@$(NANVIX_SDK_IMAGE_DIGEST)
 
 # installation directory
 PREFIX?=/usr/local
