@@ -31,7 +31,7 @@
 EXE = .elf
 
 PLATFORM ?= microvm
-MEMORY_SIZE ?= 128mb
+MEMORY_SIZE ?= 256mb
 
 _NANVIX_DOCKER_BUILD_GOALS := all install
 _NANVIX_GOALS := $(or $(MAKECMDGOALS),$(.DEFAULT_GOAL))
