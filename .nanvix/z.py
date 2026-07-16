@@ -257,7 +257,6 @@ class QuickJSBuild(ZScript):
                 app_args.append(guest_path)
 
                 initrd = make_initrd(
-                    self,
                     qjs_elf_src,
                     test_out(),
                     args=InitRdArgs(app_args=app_args),
