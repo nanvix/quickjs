@@ -34,6 +34,7 @@ jobs:
       windows-matrix-exclude: '[]'
       skip-full-test-modes: '[]'
       caller-event-name: ${{ github.event_name }}
+      downstream-dispatches: '[{"repo":"nanvix/nanvix-distro","event_type":"distro-release-candidate"}]'
       windows-test: true
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
@@ -49,6 +50,7 @@ jobs:
       windows-matrix-exclude: '[]'
       skip-full-test-modes: '[]'
       caller-event-name: 'schedule'
+      downstream-dispatches: '[{"repo":"nanvix/nanvix-distro","event_type":"distro-release-candidate"}]'
       windows-test: true
     secrets:
       GH_TOKEN: ${{ secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
