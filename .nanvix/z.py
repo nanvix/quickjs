@@ -25,6 +25,7 @@ from nanvix_zutil import (
     log,
     make_initrd,
     run,
+    translate_path,
 )
 from nanvix_zutil.helpers import InitRdArgs
 from nanvix_zutil.paths import (
@@ -123,7 +124,7 @@ class QuickJSBuild(ZScript):
         toolchain_p = str(TOOLCHAIN_CONTAINER_PATH)
 
         def translate(p: Path):
-            return self.docker.translate_path(p) if self.docker else p
+            return translate_path(self.docker.mounts, p) if self.docker else p
 
         args = [
             "make",
