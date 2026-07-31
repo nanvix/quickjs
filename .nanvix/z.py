@@ -114,17 +114,12 @@ class QuickJSBuild(ZScript):
             ),
         ]
 
-    def docker_config(self, image: str) -> DockerConfig:
-        cfg = super().docker_config(image)
-        cfg.output_files = list(self._BUILD_OUTPUTS) + self._staged_output_files()
-        return cfg
-
-    def _make_args(self, *targets: str) -> list[str]:
+    def _make_args(self, docker: DockerConfig | None, *targets: str) -> list[str]:
         """Build the common make argument list."""
         toolchain_p = str(TOOLCHAIN_CONTAINER_PATH)
 
         def translate(p: Path):
-            return translate_path(self.docker.mounts, p) if self.docker else p
+            return translate_path(docker.mounts, p) if docker else p
 
         args = [
             "make",
@@ -164,9 +159,10 @@ class QuickJSBuild(ZScript):
         """Download the Nanvix sysroot."""
         return super().setup()
 
-    def build(self) -> None:
+    def build(self, docker: DockerConfig) -> None:
         """Cross-compile qjs.elf, qjsc.elf, and libquickjs.a for Nanvix."""
-        run(*self._make_args("all"), cwd=repo_root(), docker=self.docker)
+        docker.output_files = list(self._BUILD_OUTPUTS) + self._staged_output_files()
+        run(*self._make_args(docker, "all"), cwd=repo_root(), docker=docker)
         # Stage into test_out() for the windows-test upload glob
         # `.nanvix/out/test/**/*.{elf,so}` (workflows v2.3.0).
         test_out().mkdir(parents=True, exist_ok=True)
